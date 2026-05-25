@@ -1,0 +1,28 @@
+{
+  "name": "xcache-stremio-addon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted Stremio addon that caches torrent streams locally and optionally accelerates through Real-Debrid.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b --force packages/core apps/addon && npm run build --workspace @xcache/configure",
+    "check": "tsc -b packages/core apps/addon --pretty false && npm run check --workspace @xcache/configure",
+    "lint": "npm run check",
+    "test": "vitest run",
+    "dev:addon": "tsx watch apps/addon/src/server.ts",
+    "print-token": "node apps/addon/dist/print-token.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}
