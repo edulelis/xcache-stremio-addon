@@ -1,4 +1,5 @@
 import type { MediaType, ParsedMediaId, StreamCandidate } from './types.js';
+import { isTorrentReferenceUrl } from './torrent-reference.js';
 
 const VIDEO_EXTENSIONS = ['.mkv', '.mp4', '.avi', '.mov', '.m4v', '.wmv', '.webm'];
 
@@ -97,14 +98,9 @@ export function normalizeStremioStream(raw: Record<string, unknown>, source: str
     resolution: parseResolution(combined),
     languages: detectLanguages(combined),
     provider: inferProvider(combined, preferredProviders),
-    isDownloadable: Boolean(infoHash || isTorrentReference(url)),
+    isDownloadable: Boolean(infoHash || isTorrentReferenceUrl(url)),
     raw
   };
-}
-
-function isTorrentReference(url: string | undefined): boolean {
-  if (!url) return false;
-  return url.startsWith('magnet:') || /^https?:\/\/.+\.torrent(?:[?#].*)?$/i.test(url);
 }
 
 function escapeRegExp(value: string): string {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseMediaId, videoExtensionFromPath, type MediaType, type RankedCandidate } from '@xcache/core';
+import { parseMediaId, torrentReference, videoExtensionFromPath, type MediaType, type RankedCandidate } from '@xcache/core';
 import { QbittorrentClient } from './clients/qbittorrent.js';
 import { RealDebridClient } from './clients/real-debrid.js';
 import { loadConfig, type AppConfig } from './env.js';
@@ -102,7 +102,7 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
   }
 
   if (parts[1] === 'play' && parts[2] === 'candidate' && parts[3]) {
-    await handleCandidate(runtime, req, res, parts[3]);
+    await handleCandidate(runtime, req, res, token, parts[3]);
     return;
   }
 
@@ -179,10 +179,16 @@ async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: htt
   sendFileWithRange(req, res, filePath);
 }
 
-async function handleCandidate(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, token: string): Promise<void> {
-  const payload = decodeSignedPayload<PlayPayload>(token, runtime.config.installTokenSecret);
+async function handleCandidate(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  installToken: string,
+  signedPayload: string
+): Promise<void> {
+  const payload = decodeSignedPayload<PlayPayload>(signedPayload, runtime.config.installTokenSecret);
   const candidate = payload.candidate;
-  const magnetOrUrl = candidate.magnetUrl || candidate.url || magnetFromHash(candidate.infoHash);
+  const magnetOrUrl = torrentReference(candidate);
   if (!magnetOrUrl) {
     sendJson(res, 422, { error: 'candidate_has_no_torrent_reference' });
     return;
@@ -204,7 +210,7 @@ async function handleCandidate(runtime: Runtime, req: http.IncomingMessage, res:
   const job = await startLocalDownload(runtime, payload);
   const filePath = await waitForPlayableFile(runtime, candidate.infoHash, job.path);
   if (!filePath) {
-    await sendStatusPlayback(runtime, req, res, token, job);
+    await sendStatusPlayback(runtime, req, res, installToken, job);
     return;
   }
 
@@ -222,7 +228,7 @@ async function handleCandidate(runtime: Runtime, req: http.IncomingMessage, res:
 async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promise<StoredJob> {
   const candidate = payload.candidate;
   const parsed = parseMediaId(payload.type, payload.id);
-  const magnetOrUrl = candidate.magnetUrl || candidate.url || magnetFromHash(candidate.infoHash);
+  const magnetOrUrl = torrentReference(candidate);
   if (!magnetOrUrl) throw new Error('candidate has no torrent reference');
 
   await runtime.qbit.addTorrent({
@@ -290,7 +296,7 @@ async function sendStatusPlayback(
   runtime: Runtime,
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  token: string,
+  installToken: string,
   job: StoredJob
 ): Promise<void> {
   if (runtime.config.statusVideoMode !== 'live_hls' || !job.infoHash) {
@@ -298,7 +304,7 @@ async function sendStatusPlayback(
     return;
   }
 
-  redirect(res, `${runtime.config.publicBaseUrl}/${token}/play/status/${encodeURIComponent(job.id)}/live.m3u8`);
+  redirect(res, `${runtime.config.publicBaseUrl}/${installToken}/play/status/${encodeURIComponent(job.id)}/live.m3u8`);
 }
 
 async function handleStatusPlaylist(
@@ -431,10 +437,6 @@ function manifest(config: AppConfig, token: string): Record<string, unknown> {
 
 function stableJobId(type: MediaType, mediaId: string, key: string): string {
   return crypto.createHash('sha256').update(`${type}:${mediaId}:${key}`).digest('hex').slice(0, 32);
-}
-
-function magnetFromHash(infoHash: string | undefined): string | undefined {
-  return infoHash ? `magnet:?xt=urn:btih:${infoHash}` : undefined;
 }
 
 function redirect(res: http.ServerResponse, location: string): void {
