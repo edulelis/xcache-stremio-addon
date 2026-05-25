@@ -5,9 +5,24 @@ export class RealDebridClient {
   ) {}
 
   async isInstantAvailable(infoHash: string): Promise<boolean> {
-    const data = await this.requestJson(`/torrents/instantAvailability/${encodeURIComponent(infoHash)}`);
-    const entry = data && typeof data === 'object' ? (data as Record<string, unknown>)[infoHash] : undefined;
-    return Boolean(entry && Object.keys(entry as Record<string, unknown>).length > 0);
+    return (await this.instantAvailability([infoHash])).has(infoHash.toLowerCase());
+  }
+
+  async instantAvailability(infoHashes: string[]): Promise<Set<string>> {
+    const uniqueHashes = [...new Set(infoHashes.map((hash) => hash.toLowerCase()).filter(Boolean))];
+    if (!uniqueHashes.length) return new Set();
+
+    const path = uniqueHashes.map((hash) => encodeURIComponent(hash)).join('/');
+    const data = await this.requestJson(`/torrents/instantAvailability/${path}`);
+    const available = new Set<string>();
+    if (!data || typeof data !== 'object') return available;
+
+    for (const [hash, entry] of Object.entries(data as Record<string, unknown>)) {
+      if (entry && typeof entry === 'object' && Object.keys(entry as Record<string, unknown>).length > 0) {
+        available.add(hash.toLowerCase());
+      }
+    }
+    return available;
   }
 
   async addMagnet(magnetUrl: string): Promise<string> {

@@ -22,7 +22,13 @@ interface Runtime {
   cache: CacheManager;
   qbit: QbittorrentClient;
   rd?: RealDebridClient;
+  rdAvailabilityCache: Map<string, CachedAvailability>;
   scraper: StremioSourceScraper;
+}
+
+interface CachedAvailability {
+  value: boolean;
+  expiresAt: number;
 }
 
 interface PlayPayload {
@@ -42,6 +48,7 @@ const runtime: Runtime = {
   cache: new CacheManager(config, store),
   qbit: new QbittorrentClient(config.qbittorrentUrl, config.qbittorrentUser, config.qbittorrentPass),
   rd: config.realDebridApiToken ? new RealDebridClient(config.realDebridApiToken) : undefined,
+  rdAvailabilityCache: new Map(),
   scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions)
 };
 
@@ -146,8 +153,10 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     ? await runtime.scraper.search(type, id)
     : [];
 
-  for (const candidate of candidates.slice(0, runtime.config.streamLimit)) {
-    const rdCached = await maybeRdCached(runtime, candidate);
+  const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
+  const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
+  for (const candidate of visibleCandidates) {
+    const rdCached = candidate.infoHash ? rdCachedByHash.get(candidate.infoHash.toLowerCase()) === true : false;
     const payload = encodeSignedPayload({ type, id, candidate: { ...candidate, isCachedRd: rdCached } }, runtime.config.installTokenSecret);
     streams.push({
       name: streamName(candidate.resolution, rdCached),
@@ -400,14 +409,44 @@ function markJobReady(runtime: Runtime, job: StoredJob, filePath: string): Store
   return readyJob;
 }
 
-async function maybeRdCached(runtime: Runtime, candidate: RankedCandidate): Promise<boolean> {
-  if (!runtime.rd || runtime.config.rdMode === 'off' || !candidate.infoHash) return false;
-  if (runtime.config.rdMode === 'local_first') return false;
-  try {
-    return await runtime.rd.isInstantAvailable(candidate.infoHash);
-  } catch {
-    return false;
+async function rdCachedMap(runtime: Runtime, candidates: RankedCandidate[]): Promise<Map<string, boolean>> {
+  const result = new Map<string, boolean>();
+  if (!runtime.rd || runtime.config.rdMode === 'off' || runtime.config.rdMode === 'local_first') return result;
+
+  const now = Date.now();
+  const hashes = [...new Set(candidates
+    .map((candidate) => candidate.infoHash?.toLowerCase())
+    .filter(isString))];
+  const missing: string[] = [];
+
+  for (const hash of hashes) {
+    const cached = runtime.rdAvailabilityCache.get(hash);
+    if (cached && cached.expiresAt > now) {
+      result.set(hash, cached.value);
+    } else {
+      runtime.rdAvailabilityCache.delete(hash);
+      missing.push(hash);
+    }
   }
+
+  if (missing.length) {
+    try {
+      const available = await runtime.rd.instantAvailability(missing);
+      const expiresAt = now + runtime.config.rdAvailabilityCacheTtlMs;
+      for (const hash of missing) {
+        const value = available.has(hash);
+        result.set(hash, value);
+        if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
+          runtime.rdAvailabilityCache.set(hash, { value, expiresAt });
+        }
+      }
+    } catch (error) {
+      console.warn('[xcache] RD availability check failed', error);
+      for (const hash of missing) result.set(hash, false);
+    }
+  }
+
+  return result;
 }
 
 async function resolveRd(rd: RealDebridClient, magnetOrUrl: string): Promise<string> {
@@ -483,6 +522,10 @@ function setCors(res: http.ServerResponse): void {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isString(value: string | undefined): value is string {
+  return Boolean(value);
 }
 
 function stripJsonSuffix(value: string): string {

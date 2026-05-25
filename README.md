@@ -53,6 +53,8 @@ SCRAPER_STREAM_URLS=https://your-source.example/stream/{type}/{id}.json
 
 The addon expects each source to return a normal Stremio stream response with a `streams` array. Any source that exposes `infoHash`, magnet URLs, or torrent URLs can be used.
 
+When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`.
+
 ## Local Playback
 
 XCACHE only serves local files after qBittorrent reports that the selected video file is nearly complete. The default threshold is `XCACHE_LOCAL_READY_MIN_PROGRESS=0.98`.
