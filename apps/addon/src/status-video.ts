@@ -102,12 +102,12 @@ export function buildStatusSnapshot(
   };
 }
 
-export function formatStatusLines(snapshot: StatusSnapshot): string[] {
+export function formatStatusLines(snapshot: StatusSnapshot, activityStep?: number): string[] {
   const percent = `${Math.round(snapshot.progress * 100)}%`;
   const titleLines = wrapText(snapshot.title, 48).slice(0, 2);
   const statusLine = snapshot.ready
     ? 'Download complete'
-    : `Downloading ${percent}`;
+    : `Downloading ${percent}${formatActivityDots(activityStep)}`;
   const detailLine = snapshot.ready
     ? 'Go back and play this stream again.'
     : `${formatBytesPerSecond(snapshot.speedBytesPerSecond)} | ${snapshot.seeds} seeds | ETA ${formatEta(snapshot.etaSeconds)}`;
@@ -158,7 +158,7 @@ export async function isFfmpegAvailable(ffmpegPath: string): Promise<boolean> {
 
 function buildFfmpegArgs(snapshot: StatusSnapshot, options: SegmentRenderOptions, outputPath: string): string[] {
   const fontFile = resolveFontFile(options.fontFile);
-  const lines = formatStatusLines(snapshot);
+  const lines = formatStatusLines(snapshot, options.segmentId);
   const textFilters = [
     drawText(lines[0], fontFile, 68, 'white', 105, true),
     drawText(lines[1], fontFile, 46, snapshot.ready ? '0x7df2a0' : 'white', 205, true),
@@ -264,6 +264,12 @@ function formatEta(value: number): string {
   const minutes = Math.floor((value % 3600) / 60);
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${Math.max(1, minutes)}m`;
+}
+
+function formatActivityDots(activityStep: number | undefined): string {
+  if (activityStep === undefined) return '';
+  const count = Math.abs(Math.floor(activityStep)) % 3 + 1;
+  return ` ${'.'.repeat(count)}`;
 }
 
 function escapeDrawtextOption(value: string): string {

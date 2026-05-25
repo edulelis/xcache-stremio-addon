@@ -67,4 +67,32 @@ describe('status video', () => {
     expect(formatStatusLines(snapshot)).toContain('Download complete');
     expect(formatStatusLines(snapshot)).toContain('Go back and play this stream again.');
   });
+
+  it('adds activity dots to live downloading segments', () => {
+    const snapshot = buildStatusSnapshot(
+      {
+        id: 'job',
+        torrentName: 'Movie.2025.1080p',
+        source: 'Torrentio',
+        sizeBytes: 0,
+        status: 'downloading'
+      },
+      {
+        hash: 'a'.repeat(40),
+        name: 'Movie.2025.1080p',
+        progress: 0.12,
+        dlspeed: 1024,
+        numSeeds: 3,
+        eta: 120,
+        state: 'downloading',
+        size: 1024 ** 3
+      },
+      { readyThreshold: 0.98 }
+    );
+
+    expect(formatStatusLines(snapshot, 0)[1]).toBe('Downloading 12% .');
+    expect(formatStatusLines(snapshot, 1)[1]).toBe('Downloading 12% ..');
+    expect(formatStatusLines(snapshot, 2)[1]).toBe('Downloading 12% ...');
+    expect(formatStatusLines(snapshot, 3)[1]).toBe('Downloading 12% .');
+  });
 });
