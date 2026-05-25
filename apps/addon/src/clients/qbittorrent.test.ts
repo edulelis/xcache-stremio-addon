@@ -39,6 +39,27 @@ describe('QbittorrentClient', () => {
     expect(addRequest?.body).toContain('sequentialDownload');
     expect(addRequest?.body).toContain('firstLastPiecePrio');
   });
+
+  it('treats already-added torrent responses as success', async () => {
+    const baseUrl = await startServer(async (req, res) => {
+      if (req.url === '/api/v2/auth/login') {
+        res.setHeader('Set-Cookie', 'SID=ok; HttpOnly');
+        res.end('Ok.');
+        return;
+      }
+      if (req.url === '/api/v2/torrents/add') {
+        res.writeHead(409);
+        res.end('Torrent already exists');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const client = new QbittorrentClient(baseUrl, 'user', 'pass');
+    await expect(client.addTorrent({ magnetOrUrl: 'magnet:?xt=urn:btih:' + 'a'.repeat(40), savePath: '/cache' }))
+      .resolves.toBeUndefined();
+  });
 });
 
 async function startServer(handler: http.RequestListener): Promise<string> {

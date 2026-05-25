@@ -11,6 +11,10 @@ export interface QbittorrentFile {
   priority: number;
 }
 
+interface RequestOptions {
+  okStatuses?: number[];
+}
+
 export class QbittorrentClient {
   private cookie = '';
 
@@ -39,7 +43,7 @@ export class QbittorrentClient {
     form.set('category', options.category || 'xcache');
     form.set('sequentialDownload', 'true');
     form.set('firstLastPiecePrio', 'true');
-    await this.request('/api/v2/torrents/add', { method: 'POST', body: form });
+    await this.request('/api/v2/torrents/add', { method: 'POST', body: form }, { okStatuses: [409] });
   }
 
   async listFiles(hash: string): Promise<QbittorrentFile[]> {
@@ -60,7 +64,7 @@ export class QbittorrentClient {
     });
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<Response> {
+  private async request(path: string, init: RequestInit = {}, options: RequestOptions = {}): Promise<Response> {
     if (!this.cookie) await this.login();
     let response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
@@ -74,6 +78,7 @@ export class QbittorrentClient {
         headers: { ...(init.headers || {}), Cookie: this.cookie }
       });
     }
+    if (options.okStatuses?.includes(response.status)) return response;
     if (!response.ok) throw new Error(`qBittorrent request failed: HTTP ${response.status}`);
     return response;
   }
