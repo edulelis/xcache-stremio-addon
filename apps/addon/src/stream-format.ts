@@ -11,7 +11,7 @@ export function localStreamName(fileName: string, torrentName?: string): string 
 }
 
 export function candidateStreamTitle(candidate: RankedCandidate): string {
-  const title = cleanStreamTitle(candidate.title || candidate.name);
+  const title = appendLanguageFlags(cleanStreamTitle(candidate.title || candidate.name), candidate.languages);
   if (title) return title;
 
   const details = [
@@ -21,7 +21,7 @@ export function candidateStreamTitle(candidate: RankedCandidate): string {
     candidate.seeders ? `${candidate.seeders} seeders` : undefined
   ].filter(Boolean).join(' • ');
 
-  return [candidate.name, details].filter(Boolean).join('\n');
+  return appendLanguageFlags([candidate.name, details].filter(Boolean).join('\n'), candidate.languages);
 }
 
 export function cleanStreamTitle(title: string): string {
@@ -41,4 +41,33 @@ function isXcacheGeneratedLine(line: string): boolean {
     /^🧲\s*qbittorrent$/i,
     /^[\w .-]+\s*•\s*(2160p|1080p|720p|480p)\b/i
   ].some((pattern) => pattern.test(line));
+}
+
+function appendLanguageFlags(title: string, languages: string[]): string {
+  const missingFlags = [...new Set(languages.map(languageFlag).filter(isString))]
+    .filter((flag) => !title.includes(flag));
+  if (!missingFlags.length) return title;
+
+  const lines = title.split('\n');
+  const globeLineIndex = lines.findIndex((line) => line.trim().startsWith('🌐'));
+  if (globeLineIndex >= 0) {
+    lines[globeLineIndex] = `${lines[globeLineIndex]} ${missingFlags.join(' ')}`.trim();
+    return lines.join('\n');
+  }
+
+  return [title, `🌐 ${missingFlags.join(' ')}`].filter(Boolean).join('\n');
+}
+
+function languageFlag(language: string): string | undefined {
+  const normalized = language.toLowerCase().replace('_', '-');
+  if (normalized === 'pt-br' || normalized === 'pt' || normalized === 'por') return '🇧🇷';
+  if (normalized === 'pt-pt') return '🇵🇹';
+  if (normalized === 'en' || normalized === 'eng' || normalized === 'english') return '🇬🇧';
+  if (normalized === 'es' || normalized === 'spa' || normalized === 'spanish') return '🇪🇸';
+  if (normalized === 'de' || normalized === 'ger' || normalized === 'german') return '🇩🇪';
+  return undefined;
+}
+
+function isString(value: string | undefined): value is string {
+  return Boolean(value);
 }

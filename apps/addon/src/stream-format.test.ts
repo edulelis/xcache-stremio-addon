@@ -20,9 +20,28 @@ describe('stream formatting', () => {
   });
 
   it('keeps the upstream title as the visible stream details', () => {
-    expect(candidateStreamTitle(candidate({ title: '📄 Movie.2025.1080p\n⭐ WEB-DL | 🏷️ SF' }))).toBe(
+    expect(candidateStreamTitle(candidate({ title: '📄 Movie.2025.1080p\n⭐ WEB-DL | 🏷️ SF', languages: [] }))).toBe(
       '📄 Movie.2025.1080p\n⭐ WEB-DL | 🏷️ SF'
     );
+  });
+
+  it('adds the Brazil flag when pt-BR is detected but upstream omitted it', () => {
+    expect(candidateStreamTitle(candidate({ title: '📄 Movie.2025.1080p\n⭐ WEB-DL | 🏷️ SF' }))).toBe(
+      '📄 Movie.2025.1080p\n⭐ WEB-DL | 🏷️ SF\n🌐 🇧🇷'
+    );
+  });
+
+  it('does not duplicate the Brazil flag when upstream already has it', () => {
+    expect(candidateStreamTitle(candidate({ title: '📄 Movie.2025.1080p\n🌐 🇧🇷' }))).toBe(
+      '📄 Movie.2025.1080p\n🌐 🇧🇷'
+    );
+  });
+
+  it('appends missing language flags to an existing globe line', () => {
+    expect(candidateStreamTitle(candidate({
+      title: '📄 Movie.2025.1080p\n🌐 🇬🇧',
+      languages: ['pt-BR', 'en']
+    }))).toBe('📄 Movie.2025.1080p\n🌐 🇬🇧 🇧🇷');
   });
 });
 
