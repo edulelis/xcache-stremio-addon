@@ -53,7 +53,7 @@ SCRAPER_STREAM_URLS=https://your-source.example/stream/{type}/{id}.json
 
 The addon expects each source to return a normal Stremio stream response with a `streams` array. Any source that exposes `infoHash`, magnet URLs, or torrent URLs can be used.
 
-When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`.
+When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. By default this check runs in the background so stream listing is not blocked by RD latency. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`, or set `XCACHE_RD_AVAILABILITY_BLOCKING=true` if you prefer the initial list to wait for RD status.
 
 ## Local Playback
 

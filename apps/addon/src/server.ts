@@ -23,6 +23,7 @@ interface Runtime {
   qbit: QbittorrentClient;
   rd?: RealDebridClient;
   rdAvailabilityCache: Map<string, CachedAvailability>;
+  rdAvailabilityInflight: Set<string>;
   scraper: StremioSourceScraper;
 }
 
@@ -49,6 +50,7 @@ const runtime: Runtime = {
   qbit: new QbittorrentClient(config.qbittorrentUrl, config.qbittorrentUser, config.qbittorrentPass),
   rd: config.realDebridApiToken ? new RealDebridClient(config.realDebridApiToken) : undefined,
   rdAvailabilityCache: new Map(),
+  rdAvailabilityInflight: new Set(),
   scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions)
 };
 
@@ -430,29 +432,43 @@ async function rdCachedMap(runtime: Runtime, candidates: RankedCandidate[]): Pro
   }
 
   if (missing.length) {
-    try {
-      const available = await runtime.rd.instantAvailability(missing);
-      const expiresAt = now + runtime.config.rdAvailabilityCacheTtlMs;
-      for (const hash of missing) {
-        const value = available.has(hash);
-        result.set(hash, value);
-        if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
-          runtime.rdAvailabilityCache.set(hash, { value, expiresAt });
-        }
-      }
-    } catch (error) {
-      console.warn('[xcache] RD availability check failed', error);
-      const expiresAt = now + Math.min(runtime.config.rdAvailabilityCacheTtlMs, 60_000);
-      for (const hash of missing) {
-        result.set(hash, false);
-        if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
-          runtime.rdAvailabilityCache.set(hash, { value: false, expiresAt });
-        }
-      }
+    if (runtime.config.rdAvailabilityBlocking) {
+      await refreshRdAvailability(runtime, missing);
+      for (const hash of missing) result.set(hash, runtime.rdAvailabilityCache.get(hash)?.value === true);
+    } else {
+      for (const hash of missing) result.set(hash, false);
+      void refreshRdAvailability(runtime, missing);
     }
   }
 
   return result;
+}
+
+async function refreshRdAvailability(runtime: Runtime, hashes: string[]): Promise<void> {
+  if (!runtime.rd) return;
+  const missing = hashes.filter((hash) => !runtime.rdAvailabilityInflight.has(hash));
+  if (!missing.length) return;
+  for (const hash of missing) runtime.rdAvailabilityInflight.add(hash);
+
+  try {
+    const available = await runtime.rd.instantAvailability(missing);
+    const expiresAt = Date.now() + runtime.config.rdAvailabilityCacheTtlMs;
+    for (const hash of missing) {
+      if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
+        runtime.rdAvailabilityCache.set(hash, { value: available.has(hash), expiresAt });
+      }
+    }
+  } catch (error) {
+    console.warn('[xcache] RD availability check failed', error);
+    const expiresAt = Date.now() + Math.min(runtime.config.rdAvailabilityCacheTtlMs, 60_000);
+    for (const hash of missing) {
+      if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
+        runtime.rdAvailabilityCache.set(hash, { value: false, expiresAt });
+      }
+    }
+  } finally {
+    for (const hash of missing) runtime.rdAvailabilityInflight.delete(hash);
+  }
 }
 
 async function resolveRd(rd: RealDebridClient, magnetOrUrl: string): Promise<string> {

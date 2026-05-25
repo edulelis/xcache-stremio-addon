@@ -16,6 +16,7 @@ export interface AppConfig {
   realDebridApiToken?: string;
   rdMode: RdMode;
   rdAvailabilityCacheTtlMs: number;
+  rdAvailabilityBlocking: boolean;
   scraperStreamUrls: string[];
   filterOptions: FilterOptions;
   streamLimit: number;
@@ -51,6 +52,7 @@ export function loadConfig(env = process.env): AppConfig {
     realDebridApiToken: env.REAL_DEBRID_API_TOKEN || undefined,
     rdMode: rdMode(env.RD_MODE || 'rd_plus_local'),
     rdAvailabilityCacheTtlMs: integerEnv(env.XCACHE_RD_AVAILABILITY_CACHE_TTL_MS, 300_000, 0),
+    rdAvailabilityBlocking: booleanEnv(env.XCACHE_RD_AVAILABILITY_BLOCKING, false),
     scraperStreamUrls: csv(env.SCRAPER_STREAM_URLS || ''),
     filterOptions: {
       allowedResolutions: csv(env.XCACHE_ALLOWED_RESOLUTIONS || '1080p,720p'),
