@@ -48,6 +48,42 @@ describe('RealDebridClient contract', () => {
     const client = new RealDebridClient('token', `${baseUrl}/rest/1.0`);
     await expect(client.instantAvailability([first, second])).resolves.toEqual(new Set([first]));
   });
+
+  it('falls back to individual checks when batch availability is disabled', async () => {
+    const first = 'a'.repeat(40);
+    const second = 'b'.repeat(40);
+    const urls: string[] = [];
+    const baseUrl = await startServer((req, res) => {
+      urls.push(req.url || '');
+      expect(req.headers.authorization).toBe('Bearer token');
+      res.setHeader('Content-Type', 'application/json');
+
+      if (req.url === `/rest/1.0/torrents/instantAvailability/${first}/${second}`) {
+        res.writeHead(403);
+        res.end(JSON.stringify({ error: 'disabled_endpoint', error_code: 37 }));
+        return;
+      }
+      if (req.url === `/rest/1.0/torrents/instantAvailability/${first}`) {
+        res.end(JSON.stringify({ [first]: { rd: [{ filename: 'cached.mkv' }] } }));
+        return;
+      }
+      if (req.url === `/rest/1.0/torrents/instantAvailability/${second}`) {
+        res.end(JSON.stringify({ [second]: {} }));
+        return;
+      }
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: 'missing' }));
+    });
+
+    const { RealDebridClient } = await import('./real-debrid.js');
+    const client = new RealDebridClient('token', `${baseUrl}/rest/1.0`);
+    await expect(client.instantAvailability([first, second])).resolves.toEqual(new Set([first]));
+    expect(urls).toEqual([
+      `/rest/1.0/torrents/instantAvailability/${first}/${second}`,
+      `/rest/1.0/torrents/instantAvailability/${first}`,
+      `/rest/1.0/torrents/instantAvailability/${second}`
+    ]);
+  });
 });
 
 async function startServer(handler: http.RequestListener): Promise<string> {

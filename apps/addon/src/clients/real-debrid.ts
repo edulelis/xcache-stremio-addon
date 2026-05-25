@@ -5,24 +5,50 @@ export class RealDebridClient {
   ) {}
 
   async isInstantAvailable(infoHash: string): Promise<boolean> {
-    return (await this.instantAvailability([infoHash])).has(infoHash.toLowerCase());
+    return await this.isSingleInstantAvailable(infoHash.toLowerCase());
   }
 
   async instantAvailability(infoHashes: string[]): Promise<Set<string>> {
     const uniqueHashes = [...new Set(infoHashes.map((hash) => hash.toLowerCase()).filter(Boolean))];
     if (!uniqueHashes.length) return new Set();
+    if (uniqueHashes.length === 1) {
+      return await this.isSingleInstantAvailable(uniqueHashes[0]) ? new Set([uniqueHashes[0]]) : new Set();
+    }
 
     const path = uniqueHashes.map((hash) => encodeURIComponent(hash)).join('/');
-    const data = await this.requestJson(`/torrents/instantAvailability/${path}`);
-    const available = new Set<string>();
-    if (!data || typeof data !== 'object') return available;
+    let data: unknown;
+    try {
+      data = await this.requestJson(`/torrents/instantAvailability/${path}`);
+    } catch (error) {
+      if (!String(error).includes('disabled_endpoint')) throw error;
+      return await this.instantAvailabilityIndividually(uniqueHashes);
+    }
+    return parseInstantAvailability(data);
+  }
 
-    for (const [hash, entry] of Object.entries(data as Record<string, unknown>)) {
-      if (entry && typeof entry === 'object' && Object.keys(entry as Record<string, unknown>).length > 0) {
-        available.add(hash.toLowerCase());
+  private async instantAvailabilityIndividually(infoHashes: string[]): Promise<Set<string>> {
+    const available = new Set<string>();
+    const concurrency = 4;
+
+    for (let index = 0; index < infoHashes.length; index += concurrency) {
+      const chunk = infoHashes.slice(index, index + concurrency);
+      const results = await Promise.all(chunk.map(async (hash) => {
+        try {
+          return await this.isSingleInstantAvailable(hash) ? hash : undefined;
+        } catch {
+          return undefined;
+        }
+      }));
+      for (const hash of results) {
+        if (hash) available.add(hash);
       }
     }
     return available;
+  }
+
+  private async isSingleInstantAvailable(infoHash: string): Promise<boolean> {
+    const data = await this.requestJson(`/torrents/instantAvailability/${encodeURIComponent(infoHash)}`);
+    return parseInstantAvailability(data).has(infoHash.toLowerCase());
   }
 
   async addMagnet(magnetUrl: string): Promise<string> {
@@ -75,4 +101,16 @@ export class RealDebridClient {
     }
     return response;
   }
+}
+
+function parseInstantAvailability(data: unknown): Set<string> {
+  const available = new Set<string>();
+  if (!data || typeof data !== 'object') return available;
+
+  for (const [hash, entry] of Object.entries(data as Record<string, unknown>)) {
+    if (entry && typeof entry === 'object' && Object.keys(entry as Record<string, unknown>).length > 0) {
+      available.add(hash.toLowerCase());
+    }
+  }
+  return available;
 }

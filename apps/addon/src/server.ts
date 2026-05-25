@@ -442,7 +442,13 @@ async function rdCachedMap(runtime: Runtime, candidates: RankedCandidate[]): Pro
       }
     } catch (error) {
       console.warn('[xcache] RD availability check failed', error);
-      for (const hash of missing) result.set(hash, false);
+      const expiresAt = now + Math.min(runtime.config.rdAvailabilityCacheTtlMs, 60_000);
+      for (const hash of missing) {
+        result.set(hash, false);
+        if (runtime.config.rdAvailabilityCacheTtlMs > 0) {
+          runtime.rdAvailabilityCache.set(hash, { value: false, expiresAt });
+        }
+      }
     }
   }
 
