@@ -1,4 +1,4 @@
-# Self-Hosting XCACHE⚡
+# Self-Hosting XCACHE
 
 ## Requirements
 

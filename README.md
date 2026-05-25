@@ -6,7 +6,7 @@ This project does not provide a hosted backend. You run the addon, qBittorrent a
 
 ## What It Does
 
-- Adds Stremio streams named `[XCACHE⚡]` for cached options and `[XCACHE⬇️]` for qBittorrent fallback options.
+- Adds Stremio streams named `[⚡] / XCACHE` for cached options and `[⬇️] / XCACHE` for qBittorrent fallback options.
 - Prioritizes local cache, then RD, then qBittorrent local download.
 - Filters/ranks streams for PT-BR-first workflows.
 - Excludes `2160p` by default.

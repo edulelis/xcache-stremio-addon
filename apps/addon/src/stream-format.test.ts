@@ -4,12 +4,12 @@ import type { RankedCandidate } from '@xcache/core';
 
 describe('stream formatting', () => {
   it('formats cached and uncached stream names like Comet', () => {
-    expect(streamName('1080p', true)).toBe('[XCACHE⚡]\nXCACHE\n1080p');
-    expect(streamName('720p', false)).toBe('[XCACHE⬇️]\nXCACHE\n720p');
+    expect(streamName('1080p', true)).toBe('[⚡]\nXCACHE\n1080p');
+    expect(streamName('720p', false)).toBe('[⬇️]\nXCACHE\n720p');
   });
 
   it('uses the lightning marker only for local cache names', () => {
-    expect(localStreamName('Jurassic.World.Rebirth.2025.1080p.mkv')).toBe('[XCACHE⚡]\nXCACHE\n1080p');
+    expect(localStreamName('Jurassic.World.Rebirth.2025.1080p.mkv')).toBe('[⚡]\nXCACHE\n1080p');
   });
 
   it('removes old XCACHE explanatory lines from stream titles', () => {

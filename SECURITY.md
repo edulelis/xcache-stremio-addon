@@ -1,6 +1,6 @@
 # Security
 
-XCACHE⚡ is self-hosted. The public repository and GitHub Pages configurator must never contain runtime secrets.
+XCACHE is self-hosted. The public repository and GitHub Pages configurator must never contain runtime secrets.
 
 ## Secrets
 

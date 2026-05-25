@@ -3,7 +3,7 @@ import { parseResolution, type RankedCandidate } from '@xcache/core';
 const ADDON_LABEL = 'XCACHE';
 
 export function streamName(resolution: string | undefined, cached: boolean): string {
-  return [cached ? '[XCACHE⚡]' : '[XCACHE⬇️]', ADDON_LABEL, resolution].filter(Boolean).join('\n');
+  return [cached ? '[⚡]' : '[⬇️]', ADDON_LABEL, resolution].filter(Boolean).join('\n');
 }
 
 export function localStreamName(fileName: string, torrentName?: string): string {
