@@ -49,13 +49,14 @@ function appendLanguageFlags(title: string, languages: string[]): string {
   if (!missingFlags.length) return title;
 
   const lines = title.split('\n');
-  const globeLineIndex = lines.findIndex((line) => line.trim().startsWith('🌐'));
+  const globeLineIndex = lines.findIndex((line) => /^[🌐🌎]/u.test(line.trim()));
   if (globeLineIndex >= 0) {
-    lines[globeLineIndex] = `${lines[globeLineIndex]} ${missingFlags.join(' ')}`.trim();
+    const existingFlags = extractFlagEmojis(lines[globeLineIndex] || '');
+    lines[globeLineIndex] = [...new Set([...existingFlags, ...missingFlags])].join(' ');
     return lines.join('\n');
   }
 
-  return [title, `🌐 ${missingFlags.join(' ')}`].filter(Boolean).join('\n');
+  return [title, missingFlags.join(' ')].filter(Boolean).join('\n');
 }
 
 function languageFlag(language: string): string | undefined {
@@ -70,4 +71,8 @@ function languageFlag(language: string): string | undefined {
 
 function isString(value: string | undefined): value is string {
   return Boolean(value);
+}
+
+function extractFlagEmojis(value: string): string[] {
+  return [...value.matchAll(/\p{Regional_Indicator}\p{Regional_Indicator}/gu)].map((match) => match[0]);
 }
