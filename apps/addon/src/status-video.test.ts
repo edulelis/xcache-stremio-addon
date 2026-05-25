@@ -43,11 +43,11 @@ describe('status video', () => {
     expect(snapshot.ready).toBe(false);
     expect(formatStatusLines(snapshot)).toEqual([
       'XCACHE',
-      'Baixando 42%',
+      'Downloading 42%',
       '3.0 MB/s | 18 seeds | ETA 10m',
       'Comando | 1080p | downloading',
       'Jurassic.World.2025.1080p.DUAL',
-      'O download continua em background.'
+      'Download continues in the background.'
     ]);
   });
 
@@ -64,7 +64,7 @@ describe('status video', () => {
       { readyThreshold: 0.98, ready: true }
     );
 
-    expect(formatStatusLines(snapshot)).toContain('Download concluido');
-    expect(formatStatusLines(snapshot)).toContain('Volte e toque o stream novamente.');
+    expect(formatStatusLines(snapshot)).toContain('Download complete');
+    expect(formatStatusLines(snapshot)).toContain('Go back and play this stream again.');
   });
 });

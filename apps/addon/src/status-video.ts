@@ -106,10 +106,10 @@ export function formatStatusLines(snapshot: StatusSnapshot): string[] {
   const percent = `${Math.round(snapshot.progress * 100)}%`;
   const titleLines = wrapText(snapshot.title, 48).slice(0, 2);
   const statusLine = snapshot.ready
-    ? 'Download concluido'
-    : `Baixando ${percent}`;
+    ? 'Download complete'
+    : `Downloading ${percent}`;
   const detailLine = snapshot.ready
-    ? 'Volte e toque o stream novamente.'
+    ? 'Go back and play this stream again.'
     : `${formatBytesPerSecond(snapshot.speedBytesPerSecond)} | ${snapshot.seeds} seeds | ETA ${formatEta(snapshot.etaSeconds)}`;
   const sourceLine = `${snapshot.source} | ${snapshot.resolution} | ${snapshot.state}`;
 
@@ -119,7 +119,7 @@ export function formatStatusLines(snapshot: StatusSnapshot): string[] {
     detailLine,
     sourceLine,
     ...titleLines,
-    snapshot.ready ? 'O arquivo ja esta no cache local.' : 'O download continua em background.'
+    snapshot.ready ? 'The file is now in local cache.' : 'Download continues in the background.'
   ];
 }
 

@@ -58,7 +58,7 @@ export function detectLanguages(text: string): string[] {
   if (/\b(spanish|espanol|español|latino|castellano|cinecalidad)\b/i.test(text.toLowerCase())) {
     languages.add('es');
   }
-  if (/\b(german|alemao|alemán|deutsch)\b/i.test(normalized)) {
+  if (/\b(german|alemao|aleman|deutsch)\b/i.test(normalized)) {
     languages.add('de');
   }
   return [...languages];

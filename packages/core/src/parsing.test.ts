@@ -27,7 +27,7 @@ describe('stream parsing', () => {
   });
 
   it('detects pt-br dual audio and resolution', () => {
-    const text = 'Jurassic.World.Recomeço.2025.1080p.WEB-DL.DUAL.5.1-Comando 12.5 GB 👤 84';
+    const text = 'Jurassic.World.Recomeco.2025.1080p.WEB-DL.DUAL.5.1-Comando 12.5 GB 👤 84';
     expect(detectLanguages(text)).toContain('pt-BR');
     expect(parseResolution(text)).toBe('1080p');
     expect(normalizeStremioStream({ title: text, infoHash: 'a'.repeat(40) }, 'test', ['Comando'])).toMatchObject({
