@@ -5,6 +5,7 @@ import type { CacheEntry, MediaType } from '@xcache/core';
 export interface StoredJob extends CacheEntry {
   infoHash?: string;
   torrentName?: string;
+  streamTitle?: string;
   source?: string;
   rdStatus?: string;
   error?: string;
@@ -51,10 +52,11 @@ export class XCacheStore {
   upsert(job: StoredJob): void {
     this.db.prepare(`
       INSERT INTO jobs (
-        id, media_type, media_id, season, episode, info_hash, torrent_name, source, file_path,
+        id, media_type, media_id, season, episode, info_hash, torrent_name, stream_title, source, file_path,
         size_bytes, status, rd_status, error, last_accessed_at, created_at, pinned, active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
+        stream_title = COALESCE(excluded.stream_title, jobs.stream_title),
         file_path = excluded.file_path,
         size_bytes = excluded.size_bytes,
         status = excluded.status,
@@ -71,6 +73,7 @@ export class XCacheStore {
       job.episode ?? null,
       job.infoHash ?? null,
       job.torrentName ?? null,
+      job.streamTitle ?? null,
       job.source ?? null,
       job.path,
       job.sizeBytes,
@@ -106,6 +109,7 @@ export class XCacheStore {
         episode INTEGER,
         info_hash TEXT,
         torrent_name TEXT,
+        stream_title TEXT,
         source TEXT,
         file_path TEXT NOT NULL DEFAULT '',
         size_bytes INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +124,14 @@ export class XCacheStore {
       CREATE INDEX IF NOT EXISTS jobs_media_lookup
         ON jobs(media_type, media_id, season, episode, status, last_accessed_at);
     `);
+    this.addColumnIfMissing('jobs', 'stream_title', 'TEXT');
+  }
+
+  private addColumnIfMissing(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all().map((row) => String(row.name));
+    if (!columns.includes(column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 }
 
@@ -132,6 +144,7 @@ function fromRow(row: Record<string, unknown>): StoredJob {
     episode: row.episode === null ? undefined : Number(row.episode),
     infoHash: row.info_hash ? String(row.info_hash) : undefined,
     torrentName: row.torrent_name ? String(row.torrent_name) : undefined,
+    streamTitle: row.stream_title ? String(row.stream_title) : undefined,
     source: row.source ? String(row.source) : undefined,
     path: String(row.file_path || ''),
     sizeBytes: Number(row.size_bytes || 0),

@@ -149,19 +149,30 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
   const parsed = parseMediaId(type, id);
   const streams = [];
   const local = runtime.store.findReady(type, parsed.id, parsed.season, parsed.episode);
-  const candidates = await cachedCandidateSearch(runtime, type, id);
+  const cachedCandidates = getCachedCandidates(runtime, type, id);
   if (local) {
     const fileName = path.basename(local.path);
     const localCandidate = local.infoHash
-      ? candidates.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase())
+      ? cachedCandidates?.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase())
       : undefined;
+    const streamTitle = local.streamTitle || (localCandidate ? candidateStreamTitle(localCandidate) : fileName);
     streams.push({
       name: localStreamName(fileName, local.torrentName),
-      title: localCandidate ? candidateStreamTitle(localCandidate) : fileName,
+      title: streamTitle,
       url: `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(local.id)}`
     });
+
+    if (!cachedCandidates) {
+      void cachedCandidateSearch(runtime, type, id)
+        .then((candidates) => updateLocalStreamTitle(runtime, local, candidates))
+        .catch((error) => console.warn('[xcache] background candidate refresh failed', error));
+      sendJson(res, 200, { streams });
+      return;
+    }
   }
 
+  const candidates = cachedCandidates || await cachedCandidateSearch(runtime, type, id);
+  if (local) updateLocalStreamTitle(runtime, local, candidates);
   const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
   for (const candidate of visibleCandidates) {
@@ -180,19 +191,39 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
 async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: string): Promise<RankedCandidate[]> {
   if (!runtime.config.scraperStreamUrls.length) return [];
 
-  const cacheKey = `${type}:${id}`;
-  const now = Date.now();
-  const cached = runtime.streamCandidateCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) return cached.candidates;
+  const cached = getCachedCandidates(runtime, type, id);
+  if (cached) return cached;
 
   const candidates = await runtime.scraper.search(type, id);
   if (runtime.config.streamCacheTtlMs > 0) {
-    runtime.streamCandidateCache.set(cacheKey, {
+    runtime.streamCandidateCache.set(candidateCacheKey(type, id), {
       candidates,
-      expiresAt: now + runtime.config.streamCacheTtlMs
+      expiresAt: Date.now() + runtime.config.streamCacheTtlMs
     });
   }
   return candidates;
+}
+
+function getCachedCandidates(runtime: Runtime, type: MediaType, id: string): RankedCandidate[] | undefined {
+  const cached = runtime.streamCandidateCache.get(candidateCacheKey(type, id));
+  if (!cached) return undefined;
+  if (cached.expiresAt > Date.now()) return cached.candidates;
+  runtime.streamCandidateCache.delete(candidateCacheKey(type, id));
+  return undefined;
+}
+
+function updateLocalStreamTitle(runtime: Runtime, local: StoredJob, candidates: RankedCandidate[]): void {
+  if (!local.infoHash) return;
+  const localCandidate = candidates.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase());
+  if (!localCandidate) return;
+  const streamTitle = candidateStreamTitle(localCandidate);
+  if (streamTitle && streamTitle !== local.streamTitle) {
+    runtime.store.upsert({ ...local, streamTitle });
+  }
+}
+
+function candidateCacheKey(type: MediaType, id: string): string {
+  return `${type}:${id}`;
 }
 
 async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, jobId: string): Promise<void> {
@@ -282,6 +313,7 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
     episode: parsed.episode,
     infoHash: candidate.infoHash,
     torrentName: candidate.name,
+    streamTitle: candidateStreamTitle(candidate),
     source: candidate.provider || candidate.source,
     path: '',
     sizeBytes: candidate.sizeBytes || 0,
