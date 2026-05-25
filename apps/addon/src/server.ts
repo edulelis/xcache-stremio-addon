@@ -25,6 +25,7 @@ interface Runtime {
   rdAvailabilityCache: Map<string, CachedAvailability>;
   rdAvailabilityInflight: Set<string>;
   streamCandidateCache: Map<string, CachedCandidates>;
+  streamCandidateInflight: Map<string, Promise<RankedCandidate[]>>;
   scraper: StremioSourceScraper;
 }
 
@@ -58,7 +59,8 @@ const runtime: Runtime = {
   rdAvailabilityCache: new Map(),
   rdAvailabilityInflight: new Set(),
   streamCandidateCache: new Map(),
-  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions)
+  streamCandidateInflight: new Map(),
+  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions, config.scraperTimeoutMs)
 };
 
 if (config.startupEviction) {
@@ -149,11 +151,11 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
   const parsed = parseMediaId(type, id);
   const streams = [];
   const local = runtime.store.findReady(type, parsed.id, parsed.season, parsed.episode);
-  const cachedCandidates = getCachedCandidates(runtime, type, id);
+  let candidates = getCachedCandidates(runtime, type, id);
   if (local) {
     const fileName = path.basename(local.path);
     const localCandidate = local.infoHash
-      ? cachedCandidates?.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase())
+      ? candidates?.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase())
       : undefined;
     const streamTitle = local.streamTitle || (localCandidate ? candidateStreamTitle(localCandidate) : fileName);
     streams.push({
@@ -162,16 +164,16 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
       url: `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(local.id)}`
     });
 
-    if (!cachedCandidates) {
-      void cachedCandidateSearch(runtime, type, id)
-        .then((candidates) => updateLocalStreamTitle(runtime, local, candidates))
-        .catch((error) => console.warn('[xcache] background candidate refresh failed', error));
-      sendJson(res, 200, { streams });
-      return;
+    if (!candidates) {
+      candidates = await cachedCandidateSearchWithin(runtime, type, id, runtime.config.localStreamSearchWaitMs);
+      if (!candidates) {
+        sendJson(res, 200, { streams });
+        return;
+      }
     }
   }
 
-  const candidates = cachedCandidates || await cachedCandidateSearch(runtime, type, id);
+  candidates = candidates || await cachedCandidateSearch(runtime, type, id);
   if (local) updateLocalStreamTitle(runtime, local, candidates);
   const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
@@ -191,17 +193,50 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
 async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: string): Promise<RankedCandidate[]> {
   if (!runtime.config.scraperStreamUrls.length) return [];
 
+  const key = candidateCacheKey(type, id);
   const cached = getCachedCandidates(runtime, type, id);
   if (cached) return cached;
 
-  const candidates = await runtime.scraper.search(type, id);
-  if (runtime.config.streamCacheTtlMs > 0) {
-    runtime.streamCandidateCache.set(candidateCacheKey(type, id), {
-      candidates,
-      expiresAt: Date.now() + runtime.config.streamCacheTtlMs
+  const inflight = runtime.streamCandidateInflight.get(key);
+  if (inflight) return inflight;
+
+  const search = runtime.scraper.search(type, id)
+    .then((candidates) => {
+      if (runtime.config.streamCacheTtlMs > 0) {
+        runtime.streamCandidateCache.set(key, {
+          candidates,
+          expiresAt: Date.now() + runtime.config.streamCacheTtlMs
+        });
+      }
+      return candidates;
+    })
+    .finally(() => runtime.streamCandidateInflight.delete(key));
+
+  runtime.streamCandidateInflight.set(key, search);
+  return search;
+}
+
+async function cachedCandidateSearchWithin(
+  runtime: Runtime,
+  type: MediaType,
+  id: string,
+  waitMs: number
+): Promise<RankedCandidate[] | undefined> {
+  const search = cachedCandidateSearch(runtime, type, id)
+    .catch((error) => {
+      console.warn('[xcache] candidate search failed', error);
+      return undefined;
     });
+
+  if (waitMs <= 0) {
+    void search;
+    return undefined;
   }
-  return candidates;
+
+  return await Promise.race([
+    search,
+    sleep(waitMs).then(() => undefined)
+  ]);
 }
 
 function getCachedCandidates(runtime: Runtime, type: MediaType, id: string): RankedCandidate[] | undefined {

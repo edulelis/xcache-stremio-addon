@@ -55,6 +55,8 @@ The addon expects each source to return a normal Stremio stream response with a 
 
 XCACHE keeps a short in-memory cache of source stream results so Stremio refreshes do not repeatedly hit slower upstream addons. Tune it with `XCACHE_STREAM_CACHE_TTL_MS`.
 
+Source calls are bounded by `XCACHE_SCRAPER_TIMEOUT_MS`. When a local cached stream already exists, XCACHE waits up to `XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS` for the source list so the `[⚡]` local stream and the remaining torrent options can appear together; if the source is slower than that, XCACHE returns the local stream immediately and keeps warming the torrent list in the background.
+
 When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. By default this check runs in the background so stream listing is not blocked by RD latency. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`, or set `XCACHE_RD_AVAILABILITY_BLOCKING=true` if you prefer the initial list to wait for RD status.
 
 ## Local Playback
