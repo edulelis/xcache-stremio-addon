@@ -5,6 +5,7 @@
   <circle cx="280" cy="610" r="260" fill="#1d3242" opacity="0.35"/>
   <text x="640" y="230" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700" fill="#ffffff">XCACHE</text>
   <text x="640" y="330" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="44" fill="#ffffff">This content is being downloaded</text>
-  <text x="640" y="405" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#c5c2d6">Come back in a few moments and try again.</text>
-  <text x="640" y="470" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" fill="#9692aa">Download continues in the background.</text>
+  <text x="640" y="395" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="72" fill="#ffffff">...</text>
+  <text x="640" y="470" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" fill="#c5c2d6">Come back in a few moments and try again.</text>
+  <text x="640" y="535" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" fill="#9692aa">Download continues in the background.</text>
 </svg>
