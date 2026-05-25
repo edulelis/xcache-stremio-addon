@@ -21,10 +21,13 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=7331
 
+RUN apk add --no-cache ffmpeg font-dejavu
+
 COPY --from=build /app/package.json /app/package-lock.json* ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/addon/package.json ./apps/addon/package.json
 COPY --from=build /app/apps/addon/dist ./apps/addon/dist
+COPY --from=build /app/apps/addon/assets ./apps/addon/assets
 COPY --from=build /app/packages/core/package.json ./packages/core/package.json
 COPY --from=build /app/packages/core/dist ./packages/core/dist
 

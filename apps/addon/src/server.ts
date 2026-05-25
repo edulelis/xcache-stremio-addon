@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseMediaId, videoExtensionFromPath, type MediaType, type RankedCandidate } from '@xcache/core';
 import { QbittorrentClient } from './clients/qbittorrent.js';
 import { RealDebridClient } from './clients/real-debrid.js';
@@ -13,6 +14,7 @@ import { decodeSignedPayload, encodeSignedPayload } from './signed-payload.js';
 import { createInstallToken, isValidInstallToken } from './token.js';
 import { XCacheStore, type StoredJob } from './storage.js';
 import { candidateStreamTitle, localStreamName, streamName } from './stream-format.js';
+import { buildLivePlaylist, buildStatusSnapshot, isFfmpegAvailable, renderStatusSegment } from './status-video.js';
 
 interface Runtime {
   config: AppConfig;
@@ -28,6 +30,8 @@ interface PlayPayload {
   id: string;
   candidate: RankedCandidate;
 }
+
+const downloadingPlaceholderPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../assets/downloading.mp4');
 
 const config = loadConfig();
 fs.mkdirSync(config.cacheDir, { recursive: true });
@@ -102,6 +106,21 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
     return;
   }
 
+  if (parts[1] === 'play' && parts[2] === 'status' && parts[3] && parts[4] === 'live.m3u8') {
+    await handleStatusPlaylist(runtime, token, req, res, parts[3]);
+    return;
+  }
+
+  if (parts[1] === 'play' && parts[2] === 'status' && parts[3] && parts[4] === 'segment' && parts[5]) {
+    await handleStatusSegment(runtime, req, res, parts[3], stripTsSuffix(parts[5]));
+    return;
+  }
+
+  if (parts[1] === 'play' && parts[2] === 'status' && parts[3] && parts[4] === 'fallback.mp4') {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
   if (parts[1] === 'api' && parts[2] === 'status') {
     sendJson(res, 200, { ok: true, token: createInstallToken(runtime.config.installTokenSecret) });
     return;
@@ -146,7 +165,12 @@ async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: htt
     sendJson(res, 404, { error: 'local_stream_not_found' });
     return;
   }
-  const filePath = runtime.cache.safePath(job.path);
+  const filePath = await findDownloadedVideoPath(runtime, job.infoHash, job.path);
+  if (!filePath) {
+    runtime.store.upsert({ ...job, status: 'downloading', lastAccessedAt: Date.now() });
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
   if (!fs.existsSync(filePath)) {
     sendJson(res, 404, { error: 'local_file_missing' });
     return;
@@ -180,10 +204,7 @@ async function handleCandidate(runtime: Runtime, req: http.IncomingMessage, res:
   const job = await startLocalDownload(runtime, payload);
   const filePath = await waitForPlayableFile(runtime, candidate.infoHash, job.path);
   if (!filePath) {
-    sendJson(res, 425, {
-      error: 'buffering',
-      message: 'Torrent was added to qBittorrent, but no playable file is ready yet. Try this stream again shortly.'
-    });
+    await sendStatusPlayback(runtime, req, res, token, job);
     return;
   }
 
@@ -219,7 +240,7 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
     episode: parsed.episode,
     infoHash: candidate.infoHash,
     torrentName: candidate.name,
-    source: candidate.source,
+    source: candidate.provider || candidate.source,
     path: '',
     sizeBytes: candidate.sizeBytes || 0,
     status: 'downloading',
@@ -232,20 +253,145 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
 }
 
 async function waitForPlayableFile(runtime: Runtime, infoHash: string | undefined, fallbackPath: string): Promise<string | undefined> {
-  if (!infoHash) return fallbackPath || undefined;
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + runtime.config.playableWaitMs;
   while (Date.now() < deadline) {
-    const files = await runtime.qbit.listFiles(infoHash).catch(() => []);
-    const selected = files
-      .filter((file) => videoExtensionFromPath(file.name))
-      .sort((left, right) => right.size - left.size)[0];
-    if (selected) {
-      const filePath = runtime.cache.safePath(selected.name);
-      if (fs.existsSync(filePath)) return filePath;
-    }
+    const filePath = await findDownloadedVideoPath(runtime, infoHash, fallbackPath);
+    if (filePath) return filePath;
     await sleep(1500);
   }
   return undefined;
+}
+
+async function findDownloadedVideoPath(
+  runtime: Runtime,
+  infoHash: string | undefined,
+  fallbackPath: string
+): Promise<string | undefined> {
+  if (infoHash) {
+    const files = await runtime.qbit.listFiles(infoHash).catch(() => undefined);
+    const selected = files
+      ?.filter((file) => videoExtensionFromPath(file.name))
+      .sort((left, right) => right.size - left.size)[0];
+
+    if (selected) {
+      if (selected.progress < runtime.config.localReadyMinProgress) return undefined;
+      const filePath = runtime.cache.safePath(selected.name);
+      if (fs.existsSync(filePath)) return filePath;
+      return undefined;
+    }
+  }
+
+  if (!fallbackPath) return undefined;
+  const filePath = runtime.cache.safePath(fallbackPath);
+  return fs.existsSync(filePath) ? filePath : undefined;
+}
+
+async function sendStatusPlayback(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  token: string,
+  job: StoredJob
+): Promise<void> {
+  if (runtime.config.statusVideoMode !== 'live_hls' || !job.infoHash) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  redirect(res, `${runtime.config.publicBaseUrl}/${token}/play/status/${encodeURIComponent(job.id)}/live.m3u8`);
+}
+
+async function handleStatusPlaylist(
+  runtime: Runtime,
+  token: string,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  jobId: string
+): Promise<void> {
+  const job = runtime.store.findById(jobId);
+  if (runtime.config.statusVideoMode !== 'live_hls' || !job?.infoHash) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  const [torrentStatus, ffmpegAvailable] = await Promise.all([
+    runtime.qbit.getTorrentStatus(job.infoHash).catch(() => undefined),
+    isFfmpegAvailable(runtime.config.statusFfmpegPath)
+  ]);
+  if (!torrentStatus || !ffmpegAvailable) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  const playlist = buildLivePlaylist({
+    baseUrl: `${runtime.config.publicBaseUrl}/${token}`,
+    jobId: job.id,
+    nowMs: Date.now(),
+    segmentSeconds: runtime.config.statusSegmentSeconds,
+    playlistWindow: runtime.config.statusPlaylistWindow
+  });
+  sendText(res, 200, 'application/vnd.apple.mpegurl; charset=utf-8', playlist, 'no-store');
+}
+
+async function handleStatusSegment(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  jobId: string,
+  segmentId: string
+): Promise<void> {
+  const parsedSegmentId = Number(segmentId);
+  const job = runtime.store.findById(jobId);
+  if (
+    runtime.config.statusVideoMode !== 'live_hls' ||
+    !job ||
+    !Number.isInteger(parsedSegmentId) ||
+    parsedSegmentId < 0
+  ) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  try {
+    const [torrentStatus, readyFilePath] = await Promise.all([
+      job.infoHash ? runtime.qbit.getTorrentStatus(job.infoHash) : Promise.resolve(undefined),
+      findDownloadedVideoPath(runtime, job.infoHash, job.path)
+    ]);
+    if (!torrentStatus && !readyFilePath) {
+      sendDownloadingPlaceholder(req, res);
+      return;
+    }
+    const effectiveJob = readyFilePath ? markJobReady(runtime, job, readyFilePath) : job;
+    const snapshot = buildStatusSnapshot(effectiveJob, torrentStatus, {
+      readyThreshold: runtime.config.localReadyMinProgress,
+      ready: Boolean(readyFilePath)
+    });
+    const segmentPath = await renderStatusSegment(snapshot, {
+      segmentId: parsedSegmentId,
+      segmentSeconds: runtime.config.statusSegmentSeconds,
+      cacheDir: runtime.config.statusSegmentCacheDir,
+      cacheTtlMs: runtime.config.statusSegmentCacheTtlMs,
+      ffmpegPath: runtime.config.statusFfmpegPath,
+      fontFile: runtime.config.statusFontFile
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    sendFileWithRange(req, res, segmentPath);
+  } catch (error) {
+    console.warn('[xcache] status segment failed, falling back to mp4', error);
+    sendDownloadingPlaceholder(req, res);
+  }
+}
+
+function markJobReady(runtime: Runtime, job: StoredJob, filePath: string): StoredJob {
+  const readyJob: StoredJob = {
+    ...job,
+    status: 'ready',
+    path: path.relative(runtime.config.cacheDir, filePath),
+    sizeBytes: fs.statSync(filePath).size,
+    lastAccessedAt: Date.now()
+  };
+  runtime.store.upsert(readyJob);
+  return readyJob;
 }
 
 async function maybeRdCached(runtime: Runtime, candidate: RankedCandidate): Promise<boolean> {
@@ -296,9 +442,34 @@ function redirect(res: http.ServerResponse, location: string): void {
   res.end();
 }
 
+function sendDownloadingPlaceholder(req: http.IncomingMessage, res: http.ServerResponse): void {
+  if (!fs.existsSync(downloadingPlaceholderPath)) {
+    sendJson(res, 425, {
+      error: 'buffering',
+      message: 'Torrent was added to qBittorrent, but no playable file is ready yet. Try this stream again shortly.'
+    });
+    return;
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
+  sendFileWithRange(req, res, downloadingPlaceholderPath);
+}
+
 function sendJson(res: http.ServerResponse, statusCode: number, body: unknown): void {
   res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
+}
+
+function sendText(
+  res: http.ServerResponse,
+  statusCode: number,
+  contentType: string,
+  body: string,
+  cacheControl?: string
+): void {
+  if (cacheControl) res.setHeader('Cache-Control', cacheControl);
+  res.writeHead(statusCode, { 'Content-Type': contentType });
+  res.end(body);
 }
 
 function setCors(res: http.ServerResponse): void {
@@ -314,6 +485,10 @@ function sleep(ms: number): Promise<void> {
 
 function stripJsonSuffix(value: string): string {
   return value.endsWith('.json') ? value.slice(0, -5) : value;
+}
+
+function stripTsSuffix(value: string): string {
+  return value.endsWith('.ts') ? value.slice(0, -3) : value;
 }
 
 function stripBasePath(pathname: string, basePath: string): string | null {

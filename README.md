@@ -8,6 +8,7 @@ This project does not provide a hosted backend. You run the addon, qBittorrent a
 
 - Adds Stremio streams named `[⚡] / XCACHE` for cached options and `[⬇️] / XCACHE` for qBittorrent fallback options.
 - Prioritizes local cache, then RD, then qBittorrent local download.
+- Starts local qBittorrent downloads in the background and plays a live-ish HLS status video while the file is not ready yet.
 - Filters/ranks streams for PT-BR-first workflows.
 - Excludes `2160p` by default.
 - Blocks `Cinecalidad` by default unless native Spanish handling is enabled.
@@ -51,6 +52,14 @@ SCRAPER_STREAM_URLS=https://your-source.example/stream/{type}/{id}.json
 ```
 
 The addon expects each source to return a normal Stremio stream response with a `streams` array. Any source that exposes `infoHash`, magnet URLs, or torrent URLs can be used.
+
+## Local Playback
+
+XCACHE only serves local files after qBittorrent reports that the selected video file is nearly complete. The default threshold is `XCACHE_LOCAL_READY_MIN_PROGRESS=0.98`.
+
+If the stream is still downloading, XCACHE starts or resumes the qBittorrent job and redirects playback to a live-ish HLS status screen. The screen updates every `XCACHE_STATUS_SEGMENT_SECONDS` seconds with progress, download speed, seed count, ETA, source and resolution. It intentionally does not switch to the movie inside the same playback; once the screen says the download is complete, reopen the title and play the `[⚡]` local cache stream.
+
+Set `XCACHE_STATUS_VIDEO_MODE=mp4_static` to disable dynamic HLS and use the static MP4 fallback on devices that do not handle live playlists well.
 
 ## Configure Page
 

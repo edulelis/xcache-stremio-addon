@@ -60,6 +60,45 @@ describe('QbittorrentClient', () => {
     await expect(client.addTorrent({ magnetOrUrl: 'magnet:?xt=urn:btih:' + 'a'.repeat(40), savePath: '/cache' }))
       .resolves.toBeUndefined();
   });
+
+  it('reads torrent status for live playback screens', async () => {
+    const hash = 'b'.repeat(40);
+    const baseUrl = await startServer(async (req, res) => {
+      if (req.url === '/api/v2/auth/login') {
+        res.setHeader('Set-Cookie', 'SID=ok; HttpOnly');
+        res.end('Ok.');
+        return;
+      }
+      if (req.url === `/api/v2/torrents/info?hashes=${hash}`) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify([{
+          hash,
+          name: 'Movie.2025.1080p.DUAL',
+          progress: 0.42,
+          dlspeed: 3145728,
+          num_seeds: 18,
+          eta: 600,
+          state: 'downloading',
+          size: 10737418240
+        }]));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const client = new QbittorrentClient(baseUrl, 'user', 'pass');
+    await expect(client.getTorrentStatus(hash)).resolves.toEqual({
+      hash,
+      name: 'Movie.2025.1080p.DUAL',
+      progress: 0.42,
+      dlspeed: 3145728,
+      numSeeds: 18,
+      eta: 600,
+      state: 'downloading',
+      size: 10737418240
+    });
+  });
 });
 
 async function startServer(handler: http.RequestListener): Promise<string> {

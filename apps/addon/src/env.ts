@@ -1,4 +1,5 @@
 import type { FilterOptions, RdMode } from '@xcache/core';
+import type { StatusVideoMode } from './status-video.js';
 
 export interface AppConfig {
   port: number;
@@ -18,6 +19,15 @@ export interface AppConfig {
   filterOptions: FilterOptions;
   streamLimit: number;
   startupEviction: boolean;
+  localReadyMinProgress: number;
+  playableWaitMs: number;
+  statusVideoMode: StatusVideoMode;
+  statusSegmentSeconds: number;
+  statusPlaylistWindow: number;
+  statusSegmentCacheTtlMs: number;
+  statusSegmentCacheDir: string;
+  statusFfmpegPath: string;
+  statusFontFile?: string;
 }
 
 const GIB = 1024 ** 3;
@@ -49,7 +59,16 @@ export function loadConfig(env = process.env): AppConfig {
       nativeLanguage: env.XCACHE_NATIVE_LANGUAGE || undefined
     },
     streamLimit: numberEnv(env.XCACHE_STREAM_LIMIT, 8),
-    startupEviction: booleanEnv(env.XCACHE_STARTUP_EVICTION, true)
+    startupEviction: booleanEnv(env.XCACHE_STARTUP_EVICTION, true),
+    localReadyMinProgress: progressEnv(env.XCACHE_LOCAL_READY_MIN_PROGRESS, 0.98),
+    playableWaitMs: numberEnv(env.XCACHE_PLAYABLE_WAIT_MS, 5000),
+    statusVideoMode: statusVideoMode(env.XCACHE_STATUS_VIDEO_MODE || 'live_hls'),
+    statusSegmentSeconds: integerEnv(env.XCACHE_STATUS_SEGMENT_SECONDS, 8, 2),
+    statusPlaylistWindow: integerEnv(env.XCACHE_STATUS_PLAYLIST_WINDOW, 6, 2),
+    statusSegmentCacheTtlMs: integerEnv(env.XCACHE_STATUS_SEGMENT_CACHE_TTL_MS, 60_000, 10_000),
+    statusSegmentCacheDir: env.XCACHE_STATUS_SEGMENT_CACHE_DIR || '/tmp/xcache-status',
+    statusFfmpegPath: env.XCACHE_FFMPEG_PATH || 'ffmpeg',
+    statusFontFile: env.XCACHE_STATUS_FONT_FILE || undefined
   };
 }
 
@@ -95,4 +114,20 @@ function bytesEnv(value: string | undefined, fallback: number): number {
 function rdMode(value: string): RdMode {
   if (['off', 'cached_only', 'rd_plus_local', 'local_first'].includes(value)) return value as RdMode;
   return 'rd_plus_local';
+}
+
+function statusVideoMode(value: string): StatusVideoMode {
+  if (['live_hls', 'mp4_static'].includes(value)) return value as StatusVideoMode;
+  return 'live_hls';
+}
+
+function progressEnv(value: string | undefined, fallback: number): number {
+  const parsed = numberEnv(value, fallback);
+  if (parsed < 0) return 0;
+  if (parsed > 1) return 1;
+  return parsed;
+}
+
+function integerEnv(value: string | undefined, fallback: number, min: number): number {
+  return Math.max(min, Math.floor(numberEnv(value, fallback)));
 }

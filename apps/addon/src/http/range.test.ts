@@ -24,6 +24,18 @@ describe('sendFileWithRange', () => {
     expect(response.status).toBe(206);
     expect(await response.text()).toBe('2345');
   });
+
+  it('serves HEAD metadata without a response body', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xcache-range-'));
+    const file = path.join(dir, 'video.mp4');
+    fs.writeFileSync(file, '0123456789');
+    const baseUrl = await startServer((req, res) => sendFileWithRange(req, res, file));
+
+    const response = await fetch(baseUrl, { method: 'HEAD' });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBe('10');
+    expect(await response.text()).toBe('');
+  });
 });
 
 async function startServer(handler: http.RequestListener): Promise<string> {

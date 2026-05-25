@@ -11,6 +11,17 @@ export interface QbittorrentFile {
   priority: number;
 }
 
+export interface QbittorrentTorrentStatus {
+  hash: string;
+  name: string;
+  progress: number;
+  dlspeed: number;
+  numSeeds: number;
+  eta: number;
+  state: string;
+  size: number;
+}
+
 interface RequestOptions {
   okStatuses?: number[];
 }
@@ -51,6 +62,24 @@ export class QbittorrentClient {
     return await response.json() as QbittorrentFile[];
   }
 
+  async getTorrentStatus(hash: string): Promise<QbittorrentTorrentStatus | undefined> {
+    const response = await this.request(`/api/v2/torrents/info?hashes=${encodeURIComponent(hash)}`);
+    const data = await response.json() as unknown;
+    const row = Array.isArray(data) ? data[0] : undefined;
+    if (!row || typeof row !== 'object') return undefined;
+    const record = row as Record<string, unknown>;
+    return {
+      hash: stringValue(record.hash) || hash,
+      name: stringValue(record.name),
+      progress: progressValue(record.progress),
+      dlspeed: numberValue(record.dlspeed),
+      numSeeds: numberValue(record.num_seeds),
+      eta: numberValue(record.eta),
+      state: stringValue(record.state),
+      size: numberValue(record.size)
+    };
+  }
+
   async setFilePriority(hash: string, ids: number[], priority: number): Promise<void> {
     const body = new URLSearchParams({
       hash,
@@ -82,4 +111,20 @@ export class QbittorrentClient {
     if (!response.ok) throw new Error(`qBittorrent request failed: HTTP ${response.status}`);
     return response;
   }
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function numberValue(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function progressValue(value: unknown): number {
+  const parsed = numberValue(value);
+  if (parsed < 0) return 0;
+  if (parsed > 1) return 1;
+  return parsed;
 }
