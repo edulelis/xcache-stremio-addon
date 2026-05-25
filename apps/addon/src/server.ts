@@ -24,11 +24,17 @@ interface Runtime {
   rd?: RealDebridClient;
   rdAvailabilityCache: Map<string, CachedAvailability>;
   rdAvailabilityInflight: Set<string>;
+  streamCandidateCache: Map<string, CachedCandidates>;
   scraper: StremioSourceScraper;
 }
 
 interface CachedAvailability {
   value: boolean;
+  expiresAt: number;
+}
+
+interface CachedCandidates {
+  candidates: RankedCandidate[];
   expiresAt: number;
 }
 
@@ -51,6 +57,7 @@ const runtime: Runtime = {
   rd: config.realDebridApiToken ? new RealDebridClient(config.realDebridApiToken) : undefined,
   rdAvailabilityCache: new Map(),
   rdAvailabilityInflight: new Set(),
+  streamCandidateCache: new Map(),
   scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions)
 };
 
@@ -151,9 +158,7 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     });
   }
 
-  const candidates = runtime.config.scraperStreamUrls.length
-    ? await runtime.scraper.search(type, id)
-    : [];
+  const candidates = await cachedCandidateSearch(runtime, type, id);
 
   const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
@@ -168,6 +173,24 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
   }
 
   sendJson(res, 200, { streams });
+}
+
+async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: string): Promise<RankedCandidate[]> {
+  if (!runtime.config.scraperStreamUrls.length) return [];
+
+  const cacheKey = `${type}:${id}`;
+  const now = Date.now();
+  const cached = runtime.streamCandidateCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.candidates;
+
+  const candidates = await runtime.scraper.search(type, id);
+  if (runtime.config.streamCacheTtlMs > 0) {
+    runtime.streamCandidateCache.set(cacheKey, {
+      candidates,
+      expiresAt: now + runtime.config.streamCacheTtlMs
+    });
+  }
+  return candidates;
 }
 
 async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, jobId: string): Promise<void> {

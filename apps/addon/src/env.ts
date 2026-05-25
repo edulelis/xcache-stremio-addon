@@ -18,6 +18,7 @@ export interface AppConfig {
   rdAvailabilityCacheTtlMs: number;
   rdAvailabilityBlocking: boolean;
   scraperStreamUrls: string[];
+  streamCacheTtlMs: number;
   filterOptions: FilterOptions;
   streamLimit: number;
   startupEviction: boolean;
@@ -54,6 +55,7 @@ export function loadConfig(env = process.env): AppConfig {
     rdAvailabilityCacheTtlMs: integerEnv(env.XCACHE_RD_AVAILABILITY_CACHE_TTL_MS, 300_000, 0),
     rdAvailabilityBlocking: booleanEnv(env.XCACHE_RD_AVAILABILITY_BLOCKING, false),
     scraperStreamUrls: csv(env.SCRAPER_STREAM_URLS || ''),
+    streamCacheTtlMs: integerEnv(env.XCACHE_STREAM_CACHE_TTL_MS, 120_000, 0),
     filterOptions: {
       allowedResolutions: csv(env.XCACHE_ALLOWED_RESOLUTIONS || '1080p,720p'),
       preferredLanguages: csv(env.XCACHE_PREFERRED_LANGUAGES || 'pt-BR,pt,en'),
