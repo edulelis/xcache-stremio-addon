@@ -149,16 +149,18 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
   const parsed = parseMediaId(type, id);
   const streams = [];
   const local = runtime.store.findReady(type, parsed.id, parsed.season, parsed.episode);
+  const candidates = await cachedCandidateSearch(runtime, type, id);
   if (local) {
     const fileName = path.basename(local.path);
+    const localCandidate = local.infoHash
+      ? candidates.find((candidate) => candidate.infoHash?.toLowerCase() === local.infoHash?.toLowerCase())
+      : undefined;
     streams.push({
       name: localStreamName(fileName, local.torrentName),
-      title: fileName,
+      title: localCandidate ? candidateStreamTitle(localCandidate) : fileName,
       url: `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(local.id)}`
     });
   }
-
-  const candidates = await cachedCandidateSearch(runtime, type, id);
 
   const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
