@@ -14,6 +14,10 @@
 - `REAL_DEBRID_API_TOKEN`: enables RD acceleration when set.
 - `RD_MODE`: `rd_plus_local`, `cached_only`, `local_first`, or `off`.
 - `SCRAPER_STREAM_URLS`: comma-separated Stremio stream endpoint templates.
+- `XCACHE_STREAM_CACHE_TTL_MS`: source stream result cache TTL. Defaults to `600000`.
+- `XCACHE_PLAY_INTENT_TTL_MS`: short playback URL intent TTL. Defaults to `86400000`.
+- `XCACHE_SCRAPER_TIMEOUT_MS`: per-source request timeout. Defaults to `10000`.
+- `XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS`: max wait for source streams when a local cache stream already exists. Defaults to `2500`.
 - `XCACHE_ALLOWED_RESOLUTIONS`: defaults to `1080p,720p`.
 - `XCACHE_PREFERRED_LANGUAGES`: defaults to `pt-BR,pt,en`.
 - `XCACHE_PREFERRED_PROVIDERS`: defaults to `Comando,MicoLeaoDublado,BluDV`.

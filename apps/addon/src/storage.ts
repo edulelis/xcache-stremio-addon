@@ -16,6 +16,11 @@ export interface StoredStreamCandidates {
   expiresAt: number;
 }
 
+export interface StoredPlayIntent<TPayload> {
+  payload: TPayload;
+  expiresAt: number;
+}
+
 type DatabaseSync = {
   exec(sql: string): void;
   prepare(sql: string): {
@@ -134,6 +139,35 @@ export class XCacheStore {
     `).run(key, JSON.stringify(candidates), expiresAt, Date.now());
   }
 
+  findPlayIntent<TPayload>(id: string): StoredPlayIntent<TPayload> | undefined {
+    const row = this.db.prepare('SELECT payload, expires_at FROM play_intents WHERE id = ?').get(id);
+    if (!row) return undefined;
+
+    const expiresAt = Number(row.expires_at);
+    if (expiresAt <= Date.now()) {
+      this.db.prepare('DELETE FROM play_intents WHERE id = ?').run(id);
+      return undefined;
+    }
+
+    try {
+      return { payload: JSON.parse(String(row.payload)) as TPayload, expiresAt };
+    } catch {
+      this.db.prepare('DELETE FROM play_intents WHERE id = ?').run(id);
+      return undefined;
+    }
+  }
+
+  upsertPlayIntent(id: string, payload: unknown, expiresAt: number): void {
+    this.db.prepare(`
+      INSERT INTO play_intents (id, payload, expires_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        payload = excluded.payload,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    `).run(id, JSON.stringify(payload), expiresAt, Date.now());
+  }
+
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
@@ -167,6 +201,15 @@ export class XCacheStore {
       );
       CREATE INDEX IF NOT EXISTS stream_cache_expires_at
         ON stream_cache(expires_at);
+
+      CREATE TABLE IF NOT EXISTS play_intents (
+        id TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS play_intents_expires_at
+        ON play_intents(expires_at);
     `);
     this.addColumnIfMissing('jobs', 'stream_title', 'TEXT');
   }

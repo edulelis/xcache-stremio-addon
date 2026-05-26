@@ -19,6 +19,7 @@ export interface AppConfig {
   rdAvailabilityBlocking: boolean;
   scraperStreamUrls: string[];
   streamCacheTtlMs: number;
+  playIntentTtlMs: number;
   scraperTimeoutMs: number;
   localStreamSearchWaitMs: number;
   filterOptions: FilterOptions;
@@ -58,6 +59,7 @@ export function loadConfig(env = process.env): AppConfig {
     rdAvailabilityBlocking: booleanEnv(env.XCACHE_RD_AVAILABILITY_BLOCKING, false),
     scraperStreamUrls: csv(env.SCRAPER_STREAM_URLS || ''),
     streamCacheTtlMs: integerEnv(env.XCACHE_STREAM_CACHE_TTL_MS, 600_000, 0),
+    playIntentTtlMs: integerEnv(env.XCACHE_PLAY_INTENT_TTL_MS, 86_400_000, 60_000),
     scraperTimeoutMs: integerEnv(env.XCACHE_SCRAPER_TIMEOUT_MS, 10_000, 500),
     localStreamSearchWaitMs: integerEnv(env.XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS, 2500, 0),
     filterOptions: {

@@ -57,13 +57,15 @@ XCACHE keeps a short in-memory cache of source stream results so Stremio refresh
 
 Source calls are bounded by `XCACHE_SCRAPER_TIMEOUT_MS`. When a local cached stream already exists, XCACHE waits up to `XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS` for the source list so the `[⚡]` local stream and the remaining torrent options can appear together; if the source is slower than that, XCACHE returns the local stream immediately and keeps warming the torrent list in the background.
 
+Stream playback URLs are short server-side intents, not large encoded payloads. This keeps the addon compatible with native Stremio clients such as Android TV, where the web CORS/service-worker layer is not present.
+
 When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. By default this check runs in the background so stream listing is not blocked by RD latency. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`, or set `XCACHE_RD_AVAILABILITY_BLOCKING=true` if you prefer the initial list to wait for RD status.
 
 ## Local Playback
 
 XCACHE only serves local files after qBittorrent reports that the selected video file is nearly complete. The default threshold is `XCACHE_LOCAL_READY_MIN_PROGRESS=0.98`.
 
-If the stream is still downloading, XCACHE starts or resumes the qBittorrent job and redirects playback to a live-ish HLS status screen. The screen updates every `XCACHE_STATUS_SEGMENT_SECONDS` seconds with progress, download speed, seed count, ETA, source and resolution. It intentionally does not switch to the movie inside the same playback; once the screen says the download is complete, reopen the title and play the `[⚡]` local cache stream.
+If the stream is still downloading, XCACHE starts or resumes the qBittorrent job and serves a live-ish HLS status screen directly from a `.m3u8` stream URL. The screen updates every `XCACHE_STATUS_SEGMENT_SECONDS` seconds with progress, download speed, seed count, ETA, source and resolution. It intentionally does not switch to the movie inside the same playback; once the screen says the download is complete, reopen the title and play the `[⚡]` local cache stream.
 
 Set `XCACHE_STATUS_VIDEO_MODE=mp4_static` to disable dynamic HLS and use the static MP4 fallback on devices that do not handle live playlists well.
 

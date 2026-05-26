@@ -34,6 +34,17 @@ describe('XCacheStore stream candidate cache', () => {
 
     expect(store.findStreamCandidates('movie:tmdb:1')).toBeUndefined();
   });
+
+  it('persists short playback intents', async () => {
+    const dbPath = tempDbPath();
+    const store = await XCacheStore.open(dbPath);
+    const payload = { type: 'movie', id: 'tmdb:1', candidate: candidate('Movie.2025.1080p.DUAL') };
+    const expiresAt = Date.now() + 60_000;
+
+    store.upsertPlayIntent('intent1', payload, expiresAt);
+
+    expect(store.findPlayIntent('intent1')).toEqual({ payload, expiresAt });
+  });
 });
 
 function tempDbPath(): string {

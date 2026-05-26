@@ -10,7 +10,7 @@ import { loadConfig, type AppConfig } from './env.js';
 import { sendFileWithRange } from './http/range.js';
 import { CacheManager } from './cache-manager.js';
 import { StremioSourceScraper } from './scraper.js';
-import { decodeSignedPayload, encodeSignedPayload } from './signed-payload.js';
+import { decodeSignedPayload } from './signed-payload.js';
 import { createInstallToken, isValidInstallToken } from './token.js';
 import { XCacheStore, type StoredJob } from './storage.js';
 import { candidateStreamTitle, localStreamName, streamName } from './stream-format.js';
@@ -120,7 +120,13 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
   }
 
   if (parts[1] === 'play' && parts[2] === 'candidate' && parts[3]) {
-    await handleCandidate(runtime, req, res, token, parts[3]);
+    if (parts[4] === 'status.m3u8') {
+      await handleCandidateStatusPlaylist(runtime, req, res, token, parts[3]);
+    } else if (parts[4] === 'fallback.mp4') {
+      await handleCandidateFallback(runtime, req, res, parts[3]);
+    } else {
+      await handleCandidate(runtime, req, res, token, parts[3]);
+    }
     return;
   }
 
@@ -161,7 +167,12 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     streams.push({
       name: localStreamName(fileName, local.torrentName),
       title: streamTitle,
-      url: `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(local.id)}`
+      url: `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(local.id)}/${encodeURIComponent(fileName)}`,
+      behaviorHints: streamBehaviorHints({
+        filename: fileName,
+        sizeBytes: local.sizeBytes,
+        bingeGroup: `xcache|local|${local.infoHash || local.id}`
+      })
     });
 
     if (!candidates) {
@@ -179,11 +190,18 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
   for (const candidate of visibleCandidates) {
     const rdCached = candidate.infoHash ? rdCachedByHash.get(candidate.infoHash.toLowerCase()) === true : false;
-    const payload = encodeSignedPayload({ type, id, candidate: { ...candidate, isCachedRd: rdCached } }, runtime.config.installTokenSecret);
+    const candidateForPlayback = { ...candidate, isCachedRd: rdCached };
+    const payload = { type, id, candidate: candidateForPlayback };
+    const intentId = storePlayIntent(runtime, payload);
     streams.push({
       name: streamName(candidate.resolution, rdCached),
       title: candidateStreamTitle(candidate),
-      url: `${runtime.config.publicBaseUrl}/${token}/play/candidate/${payload}`
+      url: candidatePlaybackUrl(runtime, token, intentId, rdCached),
+      behaviorHints: streamBehaviorHints({
+        filename: candidateFilename(candidate),
+        sizeBytes: candidate.sizeBytes,
+        bingeGroup: candidate.infoHash ? `xcache|torrent|${candidate.infoHash}` : `xcache|source|${intentId}`
+      })
     });
   }
 
@@ -301,7 +319,7 @@ async function handleCandidate(
   installToken: string,
   signedPayload: string
 ): Promise<void> {
-  const payload = decodeSignedPayload<PlayPayload>(signedPayload, runtime.config.installTokenSecret);
+  const payload = resolvePlayPayload(runtime, signedPayload);
   const candidate = payload.candidate;
   const magnetOrUrl = torrentReference(candidate);
   if (!magnetOrUrl) {
@@ -340,11 +358,60 @@ async function handleCandidate(
   sendFileWithRange(req, res, filePath);
 }
 
+async function handleCandidateStatusPlaylist(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  installToken: string,
+  intentId: string
+): Promise<void> {
+  const payload = resolvePlayPayload(runtime, intentId);
+  const job = await startLocalDownload(runtime, payload);
+  if (runtime.config.statusVideoMode !== 'live_hls' || !job.infoHash) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  const ffmpegAvailable = await isFfmpegAvailable(runtime.config.statusFfmpegPath);
+  if (!ffmpegAvailable) {
+    sendDownloadingPlaceholder(req, res);
+    return;
+  }
+
+  const playlist = buildLivePlaylist({
+    baseUrl: `${runtime.config.publicBaseUrl}/${installToken}`,
+    jobId: job.id,
+    nowMs: Date.now(),
+    segmentSeconds: runtime.config.statusSegmentSeconds,
+    playlistWindow: runtime.config.statusPlaylistWindow
+  });
+  sendText(res, 200, 'application/vnd.apple.mpegurl; charset=utf-8', playlist, 'no-store');
+}
+
+async function handleCandidateFallback(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  intentId: string
+): Promise<void> {
+  const payload = resolvePlayPayload(runtime, intentId);
+  await startLocalDownload(runtime, payload);
+  sendDownloadingPlaceholder(req, res);
+}
+
 async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promise<StoredJob> {
   const candidate = payload.candidate;
   const parsed = parseMediaId(payload.type, payload.id);
   const magnetOrUrl = torrentReference(candidate);
   if (!magnetOrUrl) throw new Error('candidate has no torrent reference');
+
+  const jobId = stableJobId(payload.type, parsed.id, candidate.infoHash || magnetOrUrl);
+  const existing = runtime.store.findById(jobId);
+  if (existing?.active) {
+    const lastAccessedAt = Date.now();
+    runtime.store.touch(existing.id);
+    return { ...existing, lastAccessedAt };
+  }
 
   await runtime.qbit.addTorrent({
     magnetOrUrl,
@@ -354,7 +421,7 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
 
   const now = Date.now();
   const job: StoredJob = {
-    id: stableJobId(payload.type, parsed.id, candidate.infoHash || magnetOrUrl),
+    id: jobId,
     mediaType: payload.type,
     mediaId: parsed.id,
     season: parsed.season,
@@ -436,11 +503,8 @@ async function handleStatusPlaylist(
     return;
   }
 
-  const [torrentStatus, ffmpegAvailable] = await Promise.all([
-    runtime.qbit.getTorrentStatus(job.infoHash).catch(() => undefined),
-    isFfmpegAvailable(runtime.config.statusFfmpegPath)
-  ]);
-  if (!torrentStatus || !ffmpegAvailable) {
+  const ffmpegAvailable = await isFfmpegAvailable(runtime.config.statusFfmpegPath);
+  if (!ffmpegAvailable) {
     sendDownloadingPlaceholder(req, res);
     return;
   }
@@ -479,10 +543,6 @@ async function handleStatusSegment(
       job.infoHash ? runtime.qbit.getTorrentStatus(job.infoHash) : Promise.resolve(undefined),
       findDownloadedVideoPath(runtime, job.infoHash, job.path)
     ]);
-    if (!torrentStatus && !readyFilePath) {
-      sendDownloadingPlaceholder(req, res);
-      return;
-    }
     const effectiveJob = readyFilePath ? markJobReady(runtime, job, readyFilePath) : job;
     const snapshot = buildStatusSnapshot(effectiveJob, torrentStatus, {
       readyThreshold: runtime.config.localReadyMinProgress,
@@ -603,6 +663,47 @@ function manifest(config: AppConfig, token: string): Record<string, unknown> {
 
 function stableJobId(type: MediaType, mediaId: string, key: string): string {
   return crypto.createHash('sha256').update(`${type}:${mediaId}:${key}`).digest('hex').slice(0, 32);
+}
+
+function storePlayIntent(runtime: Runtime, payload: PlayPayload): string {
+  const id = crypto
+    .createHmac('sha256', runtime.config.installTokenSecret)
+    .update(JSON.stringify(payload))
+    .digest('base64url')
+    .slice(0, 32);
+  runtime.store.upsertPlayIntent(id, payload, Date.now() + runtime.config.playIntentTtlMs);
+  return id;
+}
+
+function resolvePlayPayload(runtime: Runtime, value: string): PlayPayload {
+  const stored = runtime.store.findPlayIntent<PlayPayload>(value);
+  if (stored) return stored.payload;
+  return decodeSignedPayload<PlayPayload>(value, runtime.config.installTokenSecret);
+}
+
+function candidatePlaybackUrl(runtime: Runtime, token: string, intentId: string, rdCached: boolean): string {
+  if (rdCached && runtime.rd && runtime.config.rdMode !== 'off' && runtime.config.rdMode !== 'local_first') {
+    return `${runtime.config.publicBaseUrl}/${token}/play/candidate/${intentId}`;
+  }
+  if (runtime.config.statusVideoMode === 'live_hls') {
+    return `${runtime.config.publicBaseUrl}/${token}/play/candidate/${intentId}/status.m3u8`;
+  }
+  return `${runtime.config.publicBaseUrl}/${token}/play/candidate/${intentId}/fallback.mp4`;
+}
+
+function streamBehaviorHints(options: { filename?: string; sizeBytes?: number; bingeGroup?: string }): Record<string, unknown> {
+  return {
+    ...(options.filename ? { filename: options.filename } : {}),
+    ...(options.sizeBytes ? { videoSize: options.sizeBytes } : {}),
+    ...(options.bingeGroup ? { bingeGroup: options.bingeGroup } : {})
+  };
+}
+
+function candidateFilename(candidate: RankedCandidate): string | undefined {
+  const raw = candidate.raw as { behaviorHints?: { filename?: unknown } } | undefined;
+  if (typeof raw?.behaviorHints?.filename === 'string') return raw.behaviorHints.filename;
+  const firstLine = candidate.title?.split(/\r?\n/).find((line) => videoExtensionFromPath(line));
+  return firstLine?.replace(/^[^\p{L}\p{N}]+/u, '').trim() || candidate.name;
 }
 
 function redirect(res: http.ServerResponse, location: string): void {
