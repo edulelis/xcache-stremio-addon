@@ -33,7 +33,11 @@ export interface AppConfig {
   statusSegmentCacheTtlMs: number;
   statusSegmentCacheDir: string;
   statusFfmpegPath: string;
+  ffprobePath: string;
+  mkvpropeditPath: string;
   statusFontFile?: string;
+  audioDefaultEnabled: boolean;
+  audioLanguagePriority: string[];
 }
 
 const GIB = 1024 ** 3;
@@ -80,7 +84,11 @@ export function loadConfig(env = process.env): AppConfig {
     statusSegmentCacheTtlMs: integerEnv(env.XCACHE_STATUS_SEGMENT_CACHE_TTL_MS, 60_000, 10_000),
     statusSegmentCacheDir: env.XCACHE_STATUS_SEGMENT_CACHE_DIR || '/tmp/xcache-status',
     statusFfmpegPath: env.XCACHE_FFMPEG_PATH || 'ffmpeg',
-    statusFontFile: env.XCACHE_STATUS_FONT_FILE || undefined
+    ffprobePath: env.XCACHE_FFPROBE_PATH || 'ffprobe',
+    mkvpropeditPath: env.XCACHE_MKVPROPEDIT_PATH || 'mkvpropedit',
+    statusFontFile: env.XCACHE_STATUS_FONT_FILE || undefined,
+    audioDefaultEnabled: booleanEnv(env.XCACHE_AUDIO_DEFAULT_ENABLED, true),
+    audioLanguagePriority: csv(env.XCACHE_AUDIO_LANGUAGE_PRIORITY || 'pt-BR,pt,por,pob,br,en,eng')
   };
 }
 

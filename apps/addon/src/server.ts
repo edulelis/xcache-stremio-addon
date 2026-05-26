@@ -8,6 +8,7 @@ import { QbittorrentClient } from './clients/qbittorrent.js';
 import { RealDebridClient } from './clients/real-debrid.js';
 import { loadConfig, type AppConfig } from './env.js';
 import { sendFileWithRange } from './http/range.js';
+import { ensurePreferredAudioDefault } from './audio-preference.js';
 import { CacheManager } from './cache-manager.js';
 import { StremioSourceScraper } from './scraper.js';
 import { decodeSignedPayload } from './signed-payload.js';
@@ -43,6 +44,11 @@ interface PlayPayload {
   type: MediaType;
   id: string;
   candidate: RankedCandidate;
+}
+
+interface DownloadedVideo {
+  path: string;
+  progress?: number;
 }
 
 const downloadingPlaceholderPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../assets/downloading.mp4');
@@ -298,18 +304,19 @@ async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: htt
     sendJson(res, 404, { error: 'local_stream_not_found' });
     return;
   }
-  const filePath = await findDownloadedVideoPath(runtime, job.infoHash, job.path);
-  if (!filePath) {
+  const video = await findDownloadedVideo(runtime, job.infoHash, job.path);
+  if (!video) {
     runtime.store.upsert({ ...job, status: 'downloading', lastAccessedAt: Date.now() });
     sendDownloadingPlaceholder(req, res);
     return;
   }
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(video.path)) {
     sendJson(res, 404, { error: 'local_file_missing' });
     return;
   }
   runtime.store.touch(job.id);
-  sendFileWithRange(req, res, filePath);
+  await applyAudioPreference(runtime, video);
+  sendFileWithRange(req, res, video.path);
 }
 
 async function handleCandidate(
@@ -341,8 +348,8 @@ async function handleCandidate(
   }
 
   const job = await startLocalDownload(runtime, payload);
-  const filePath = await waitForPlayableFile(runtime, candidate.infoHash, job.path);
-  if (!filePath) {
+  const video = await waitForPlayableFile(runtime, candidate.infoHash, job.path);
+  if (!video) {
     await sendStatusPlayback(runtime, req, res, installToken, job);
     return;
   }
@@ -350,12 +357,13 @@ async function handleCandidate(
   const readyJob: StoredJob = {
     ...job,
     status: 'ready',
-    path: path.relative(runtime.config.cacheDir, filePath),
-    sizeBytes: fs.statSync(filePath).size,
+    path: path.relative(runtime.config.cacheDir, video.path),
+    sizeBytes: fs.statSync(video.path).size,
     lastAccessedAt: Date.now()
   };
   runtime.store.upsert(readyJob);
-  sendFileWithRange(req, res, filePath);
+  await applyAudioPreference(runtime, video);
+  sendFileWithRange(req, res, video.path);
 }
 
 async function handleCandidateStatusPlaylist(
@@ -441,21 +449,21 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
   return job;
 }
 
-async function waitForPlayableFile(runtime: Runtime, infoHash: string | undefined, fallbackPath: string): Promise<string | undefined> {
+async function waitForPlayableFile(runtime: Runtime, infoHash: string | undefined, fallbackPath: string): Promise<DownloadedVideo | undefined> {
   const deadline = Date.now() + runtime.config.playableWaitMs;
   while (Date.now() < deadline) {
-    const filePath = await findDownloadedVideoPath(runtime, infoHash, fallbackPath);
-    if (filePath) return filePath;
+    const video = await findDownloadedVideo(runtime, infoHash, fallbackPath);
+    if (video) return video;
     await sleep(1500);
   }
   return undefined;
 }
 
-async function findDownloadedVideoPath(
+async function findDownloadedVideo(
   runtime: Runtime,
   infoHash: string | undefined,
   fallbackPath: string
-): Promise<string | undefined> {
+): Promise<DownloadedVideo | undefined> {
   if (infoHash) {
     const files = await runtime.qbit.listFiles(infoHash).catch(() => undefined);
     const selected = files
@@ -465,14 +473,14 @@ async function findDownloadedVideoPath(
     if (selected) {
       if (selected.progress < runtime.config.localReadyMinProgress) return undefined;
       const filePath = runtime.cache.safePath(selected.name);
-      if (fs.existsSync(filePath)) return filePath;
+      if (fs.existsSync(filePath)) return { path: filePath, progress: selected.progress };
       return undefined;
     }
   }
 
   if (!fallbackPath) return undefined;
   const filePath = runtime.cache.safePath(fallbackPath);
-  return fs.existsSync(filePath) ? filePath : undefined;
+  return fs.existsSync(filePath) ? { path: filePath } : undefined;
 }
 
 async function sendStatusPlayback(
@@ -541,9 +549,10 @@ async function handleStatusSegment(
   try {
     const [torrentStatus, readyFilePath] = await Promise.all([
       job.infoHash ? runtime.qbit.getTorrentStatus(job.infoHash) : Promise.resolve(undefined),
-      findDownloadedVideoPath(runtime, job.infoHash, job.path)
+      findDownloadedVideo(runtime, job.infoHash, job.path)
     ]);
-    const effectiveJob = readyFilePath ? markJobReady(runtime, job, readyFilePath) : job;
+    const effectiveJob = readyFilePath ? markJobReady(runtime, job, readyFilePath.path) : job;
+    if (readyFilePath) void applyAudioPreference(runtime, readyFilePath);
     const snapshot = buildStatusSnapshot(effectiveJob, torrentStatus, {
       readyThreshold: runtime.config.localReadyMinProgress,
       ready: Boolean(readyFilePath)
@@ -574,6 +583,23 @@ function markJobReady(runtime: Runtime, job: StoredJob, filePath: string): Store
   };
   runtime.store.upsert(readyJob);
   return readyJob;
+}
+
+async function applyAudioPreference(runtime: Runtime, video: DownloadedVideo): Promise<void> {
+  const complete = video.progress === undefined || video.progress >= 1;
+  try {
+    const result = await ensurePreferredAudioDefault(video.path, {
+      enabled: runtime.config.audioDefaultEnabled,
+      languagePriority: runtime.config.audioLanguagePriority,
+      ffprobePath: runtime.config.ffprobePath,
+      mkvpropeditPath: runtime.config.mkvpropeditPath
+    }, complete);
+    if (result.changed) {
+      console.log(`[xcache] preferred audio default updated for ${path.basename(video.path)}: ${result.selected?.language || result.selected?.title || 'preferred'}`);
+    }
+  } catch (error) {
+    console.warn('[xcache] preferred audio update failed', error);
+  }
 }
 
 async function rdCachedMap(runtime: Runtime, candidates: RankedCandidate[]): Promise<Map<string, boolean>> {

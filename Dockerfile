@@ -21,7 +21,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=7331
 
-RUN apk add --no-cache ffmpeg font-dejavu
+RUN apk add --no-cache ffmpeg font-dejavu mkvtoolnix
 
 COPY --from=build /app/package.json /app/package-lock.json* ./
 COPY --from=build /app/node_modules ./node_modules

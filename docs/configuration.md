@@ -25,3 +25,7 @@
 - `XCACHE_ALLOW_SPANISH_NATIVE`: defaults to `false`.
 - `CACHE_MAX_BYTES`: defaults to `100GiB`.
 - `CACHE_MIN_FREE_BYTES`: defaults to `50GiB`.
+- `XCACHE_AUDIO_DEFAULT_ENABLED`: enables default audio flag correction for completed local MKV files. Defaults to `true`.
+- `XCACHE_AUDIO_LANGUAGE_PRIORITY`: preferred audio language order. Defaults to `pt-BR,pt,por,pob,br,en,eng`.
+- `XCACHE_FFPROBE_PATH`: ffprobe binary path. Defaults to `ffprobe`.
+- `XCACHE_MKVPROPEDIT_PATH`: mkvpropedit binary path. Defaults to `mkvpropedit`.
