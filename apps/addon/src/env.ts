@@ -87,8 +87,8 @@ export function loadConfig(env = process.env): AppConfig {
     ffprobePath: env.XCACHE_FFPROBE_PATH || 'ffprobe',
     mkvpropeditPath: env.XCACHE_MKVPROPEDIT_PATH || 'mkvpropedit',
     statusFontFile: env.XCACHE_STATUS_FONT_FILE || undefined,
-    audioDefaultEnabled: booleanEnv(env.XCACHE_AUDIO_DEFAULT_ENABLED, true),
-    audioLanguagePriority: csv(env.XCACHE_AUDIO_LANGUAGE_PRIORITY || 'pt-BR,pt,por,pob,br,en,eng')
+    audioDefaultEnabled: booleanEnv(env.XCACHE_AUDIO_DEFAULT_ENABLED, false),
+    audioLanguagePriority: csv(env.XCACHE_AUDIO_LANGUAGE_PRIORITY || '')
   };
 }
 

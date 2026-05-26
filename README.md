@@ -69,7 +69,7 @@ If the stream is still downloading, XCACHE starts or resumes the qBittorrent job
 
 Set `XCACHE_STATUS_VIDEO_MODE=mp4_static` to disable dynamic HLS and use the static MP4 fallback on devices that do not handle live playlists well.
 
-For completed local MKV files, XCACHE can fix the default audio flag before playback. By default it prefers Portuguese audio, then English audio, and leaves the original/native default untouched when neither is available. Tune this with `XCACHE_AUDIO_LANGUAGE_PRIORITY` or disable it with `XCACHE_AUDIO_DEFAULT_ENABLED=false`.
+For completed local MKV files, XCACHE can optionally fix the default audio flag before playback. It is disabled by default for public self-hosting. Enable it with `XCACHE_AUDIO_DEFAULT_ENABLED=true` and set `XCACHE_AUDIO_LANGUAGE_PRIORITY`, for example `pt-BR,pt,por,pob,br,en,eng`.
 
 ## Configure Page
 

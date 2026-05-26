@@ -63,6 +63,15 @@
         <label>Cache limit
           <input name="cacheMax" value="100GiB">
         </label>
+        <label>Default audio correction
+          <select name="audioDefaultEnabled">
+            <option value="false">Off</option>
+            <option value="true">On</option>
+          </select>
+        </label>
+        <label>Audio language priority
+          <input name="audioPriority" placeholder="pt-BR,pt,por,pob,br,en,eng">
+        </label>
         <button type="submit">Generate</button>
       </form>
     </section>
@@ -97,7 +106,9 @@
         `XCACHE_PREFERRED_PROVIDERS=${data.providers}`,
         `XCACHE_BLOCKED_PROVIDERS=${data.blocked}`,
         `RD_MODE=${data.rdMode}`,
-        `CACHE_MAX_BYTES=${data.cacheMax}`
+        `CACHE_MAX_BYTES=${data.cacheMax}`,
+        `XCACHE_AUDIO_DEFAULT_ENABLED=${data.audioDefaultEnabled}`,
+        `XCACHE_AUDIO_LANGUAGE_PRIORITY=${data.audioPriority}`
       ].join('\n');
     });
   </script>
