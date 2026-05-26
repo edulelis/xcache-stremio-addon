@@ -202,11 +202,13 @@ async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: stri
 
   const search = runtime.scraper.search(type, id)
     .then((candidates) => {
-      if (runtime.config.streamCacheTtlMs > 0) {
+      if (runtime.config.streamCacheTtlMs > 0 && candidates.length > 0) {
+        const expiresAt = Date.now() + runtime.config.streamCacheTtlMs;
         runtime.streamCandidateCache.set(key, {
           candidates,
-          expiresAt: Date.now() + runtime.config.streamCacheTtlMs
+          expiresAt
         });
+        runtime.store.upsertStreamCandidates(key, candidates, expiresAt);
       }
       return candidates;
     })
@@ -241,11 +243,21 @@ async function cachedCandidateSearchWithin(
 }
 
 function getCachedCandidates(runtime: Runtime, type: MediaType, id: string): RankedCandidate[] | undefined {
-  const cached = runtime.streamCandidateCache.get(candidateCacheKey(type, id));
-  if (!cached) return undefined;
+  const key = candidateCacheKey(type, id);
+  const cached = runtime.streamCandidateCache.get(key);
+  if (!cached) {
+    const stored = runtime.store.findStreamCandidates(key);
+    if (!stored) return undefined;
+    runtime.streamCandidateCache.set(key, stored);
+    return stored.candidates;
+  }
   if (cached.expiresAt > Date.now()) return cached.candidates;
-  runtime.streamCandidateCache.delete(candidateCacheKey(type, id));
-  return undefined;
+  runtime.streamCandidateCache.delete(key);
+
+  const stored = runtime.store.findStreamCandidates(key);
+  if (!stored) return undefined;
+  runtime.streamCandidateCache.set(key, stored);
+  return stored.candidates;
 }
 
 function updateLocalStreamTitle(runtime: Runtime, local: StoredJob, candidates: RankedCandidate[]): void {

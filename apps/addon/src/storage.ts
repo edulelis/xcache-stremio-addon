@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { CacheEntry, MediaType } from '@xcache/core';
+import type { CacheEntry, MediaType, RankedCandidate } from '@xcache/core';
 
 export interface StoredJob extends CacheEntry {
   infoHash?: string;
@@ -9,6 +9,11 @@ export interface StoredJob extends CacheEntry {
   source?: string;
   rdStatus?: string;
   error?: string;
+}
+
+export interface StoredStreamCandidates {
+  candidates: RankedCandidate[];
+  expiresAt: number;
 }
 
 type DatabaseSync = {
@@ -99,6 +104,36 @@ export class XCacheStore {
     this.db.prepare('DELETE FROM jobs WHERE id = ?').run(id);
   }
 
+  findStreamCandidates(key: string): StoredStreamCandidates | undefined {
+    const row = this.db.prepare('SELECT payload, expires_at FROM stream_cache WHERE key = ?').get(key);
+    if (!row) return undefined;
+
+    const expiresAt = Number(row.expires_at);
+    if (expiresAt <= Date.now()) {
+      this.db.prepare('DELETE FROM stream_cache WHERE key = ?').run(key);
+      return undefined;
+    }
+
+    try {
+      const candidates = JSON.parse(String(row.payload)) as RankedCandidate[];
+      return { candidates, expiresAt };
+    } catch {
+      this.db.prepare('DELETE FROM stream_cache WHERE key = ?').run(key);
+      return undefined;
+    }
+  }
+
+  upsertStreamCandidates(key: string, candidates: RankedCandidate[], expiresAt: number): void {
+    this.db.prepare(`
+      INSERT INTO stream_cache (key, payload, expires_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        payload = excluded.payload,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at
+    `).run(key, JSON.stringify(candidates), expiresAt, Date.now());
+  }
+
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
@@ -123,6 +158,15 @@ export class XCacheStore {
       );
       CREATE INDEX IF NOT EXISTS jobs_media_lookup
         ON jobs(media_type, media_id, season, episode, status, last_accessed_at);
+
+      CREATE TABLE IF NOT EXISTS stream_cache (
+        key TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS stream_cache_expires_at
+        ON stream_cache(expires_at);
     `);
     this.addColumnIfMissing('jobs', 'stream_title', 'TEXT');
   }
