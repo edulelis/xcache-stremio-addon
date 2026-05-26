@@ -20,7 +20,12 @@ export class StremioSourceScraper {
       })
     );
 
-    const candidates = all.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    const fulfilled = all.filter((result) => result.status === 'fulfilled');
+    if (this.templates.length > 0 && fulfilled.length === 0) {
+      throw new Error('all scraper sources failed');
+    }
+
+    const candidates = fulfilled.flatMap((result) => result.value);
     return rankCandidates(candidates, this.filterOptions);
   }
 }

@@ -48,7 +48,7 @@ describe('StremioSourceScraper', () => {
     });
   });
 
-  it('drops a slow source instead of blocking forever', async () => {
+  it('throws when every source times out', async () => {
     const baseUrl = await serve(async (_req, res) => {
       await sleep(100);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -57,7 +57,7 @@ describe('StremioSourceScraper', () => {
 
     const scraper = new StremioSourceScraper([`${baseUrl}/stream/{type}/{id}.json`], options, 20);
 
-    await expect(scraper.search('movie', 'tmdb:1')).resolves.toEqual([]);
+    await expect(scraper.search('movie', 'tmdb:1')).rejects.toThrow('all scraper sources failed');
   });
 });
 

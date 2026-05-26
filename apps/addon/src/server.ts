@@ -210,6 +210,10 @@ async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: stri
       }
       return candidates;
     })
+    .catch((error) => {
+      console.warn('[xcache] candidate search failed', error);
+      return [];
+    })
     .finally(() => runtime.streamCandidateInflight.delete(key));
 
   runtime.streamCandidateInflight.set(key, search);
@@ -223,10 +227,7 @@ async function cachedCandidateSearchWithin(
   waitMs: number
 ): Promise<RankedCandidate[] | undefined> {
   const search = cachedCandidateSearch(runtime, type, id)
-    .catch((error) => {
-      console.warn('[xcache] candidate search failed', error);
-      return undefined;
-    });
+    .catch(() => undefined);
 
   if (waitMs <= 0) {
     void search;
