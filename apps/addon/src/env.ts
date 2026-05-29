@@ -14,6 +14,11 @@ export interface AppConfig {
   qbittorrentUser: string;
   qbittorrentPass: string;
   realDebridApiToken?: string;
+  tmdbApiKey?: string;
+  tmdbReadAccessToken?: string;
+  tmdbApiBaseUrl?: string;
+  tmdbResolverTimeoutMs: number;
+  tmdbIdCacheTtlMs: number;
   rdMode: RdMode;
   rdAvailabilityCacheTtlMs: number;
   rdAvailabilityBlocking: boolean;
@@ -58,6 +63,11 @@ export function loadConfig(env = process.env): AppConfig {
     qbittorrentUser: required(env.QBITTORRENT_USER, 'QBITTORRENT_USER'),
     qbittorrentPass: required(env.QBITTORRENT_PASS, 'QBITTORRENT_PASS'),
     realDebridApiToken: env.REAL_DEBRID_API_TOKEN || undefined,
+    tmdbApiKey: env.TMDB_API_KEY || env.XCACHE_TMDB_API_KEY || undefined,
+    tmdbReadAccessToken: env.TMDB_READ_ACCESS_TOKEN || env.XCACHE_TMDB_READ_ACCESS_TOKEN || undefined,
+    tmdbApiBaseUrl: env.XCACHE_TMDB_API_BASE_URL || undefined,
+    tmdbResolverTimeoutMs: integerEnv(env.XCACHE_TMDB_RESOLVER_TIMEOUT_MS, 3000, 500),
+    tmdbIdCacheTtlMs: integerEnv(env.XCACHE_TMDB_ID_CACHE_TTL_MS, 86_400_000, 0),
     rdMode: rdMode(env.RD_MODE || 'rd_plus_local'),
     rdAvailabilityCacheTtlMs: integerEnv(env.XCACHE_RD_AVAILABILITY_CACHE_TTL_MS, 300_000, 0),
     rdAvailabilityBlocking: booleanEnv(env.XCACHE_RD_AVAILABILITY_BLOCKING, false),

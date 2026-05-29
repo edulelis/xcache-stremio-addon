@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseMediaId, torrentReference, videoExtensionFromPath, type MediaType, type RankedCandidate } from '@xcache/core';
+import { parseMediaId, torrentReference, videoExtensionFromPath, type MediaType, type ParsedMediaId, type RankedCandidate } from '@xcache/core';
 import { QbittorrentClient } from './clients/qbittorrent.js';
 import { RealDebridClient } from './clients/real-debrid.js';
+import { TmdbIdResolver } from './clients/tmdb-id-resolver.js';
 import { loadConfig, type AppConfig } from './env.js';
 import { sendFileWithRange } from './http/range.js';
 import { ensurePreferredAudioDefault } from './audio-preference.js';
@@ -28,6 +29,7 @@ interface Runtime {
   streamCandidateCache: Map<string, CachedCandidates>;
   streamCandidateInflight: Map<string, Promise<RankedCandidate[]>>;
   scraper: StremioSourceScraper;
+  idResolver: TmdbIdResolver;
 }
 
 interface CachedAvailability {
@@ -66,7 +68,14 @@ const runtime: Runtime = {
   rdAvailabilityInflight: new Set(),
   streamCandidateCache: new Map(),
   streamCandidateInflight: new Map(),
-  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions, config.scraperTimeoutMs)
+  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions, config.scraperTimeoutMs),
+  idResolver: new TmdbIdResolver({
+    apiKey: config.tmdbApiKey,
+    readAccessToken: config.tmdbReadAccessToken,
+    baseUrl: config.tmdbApiBaseUrl,
+    timeoutMs: config.tmdbResolverTimeoutMs,
+    cacheTtlMs: config.tmdbIdCacheTtlMs
+  })
 };
 
 if (config.startupEviction) {
@@ -161,9 +170,11 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
 
 async function handleStream(runtime: Runtime, token: string, type: MediaType, id: string, res: http.ServerResponse): Promise<void> {
   const parsed = parseMediaId(type, id);
+  const scrapeId = await resolveScrapeId(runtime, type, parsed);
+  const lookupIds = uniqueStrings([parsed.id, scrapeId]);
   const streams = [];
-  const local = runtime.store.findReady(type, parsed.id, parsed.season, parsed.episode);
-  let candidates = getCachedCandidates(runtime, type, id);
+  const local = findReadyForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+  let candidates = getCachedCandidatesForAnyId(runtime, type, lookupIds);
   if (local) {
     const fileName = path.basename(local.path);
     const localCandidate = local.infoHash
@@ -182,7 +193,8 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     });
 
     if (!candidates) {
-      candidates = await cachedCandidateSearchWithin(runtime, type, id, runtime.config.localStreamSearchWaitMs);
+      candidates = await cachedCandidateSearchWithin(runtime, type, scrapeId, runtime.config.localStreamSearchWaitMs);
+      if (candidates && scrapeId !== parsed.id) cacheCandidates(runtime, type, parsed.id, candidates);
       if (!candidates) {
         sendJson(res, 200, { streams });
         return;
@@ -190,14 +202,15 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     }
   }
 
-  candidates = candidates || await cachedCandidateSearch(runtime, type, id);
+  candidates = candidates || await cachedCandidateSearch(runtime, type, scrapeId);
+  if (scrapeId !== parsed.id && candidates.length > 0) cacheCandidates(runtime, type, parsed.id, candidates);
   if (local) updateLocalStreamTitle(runtime, local, candidates);
   const visibleCandidates = candidates.slice(0, runtime.config.streamLimit);
   const rdCachedByHash = await rdCachedMap(runtime, visibleCandidates);
   for (const candidate of visibleCandidates) {
     const rdCached = candidate.infoHash ? rdCachedByHash.get(candidate.infoHash.toLowerCase()) === true : false;
     const candidateForPlayback = { ...candidate, isCachedRd: rdCached };
-    const payload = { type, id, candidate: candidateForPlayback };
+    const payload = { type, id: scrapeId, candidate: candidateForPlayback };
     const intentId = storePlayIntent(runtime, payload);
     streams.push({
       name: streamName(candidate.resolution, rdCached),
@@ -226,14 +239,7 @@ async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: stri
 
   const search = runtime.scraper.search(type, id)
     .then((candidates) => {
-      if (runtime.config.streamCacheTtlMs > 0 && candidates.length > 0) {
-        const expiresAt = Date.now() + runtime.config.streamCacheTtlMs;
-        runtime.streamCandidateCache.set(key, {
-          candidates,
-          expiresAt
-        });
-        runtime.store.upsertStreamCandidates(key, candidates, expiresAt);
-      }
+      if (candidates.length > 0) cacheCandidates(runtime, type, id, candidates);
       return candidates;
     })
     .catch((error) => {
@@ -282,6 +288,53 @@ function getCachedCandidates(runtime: Runtime, type: MediaType, id: string): Ran
   if (!stored) return undefined;
   runtime.streamCandidateCache.set(key, stored);
   return stored.candidates;
+}
+
+async function resolveScrapeId(runtime: Runtime, type: MediaType, parsed: ParsedMediaId): Promise<string> {
+  try {
+    const resolved = await runtime.idResolver.resolveStreamId(type, parsed);
+    if (resolved) return resolved;
+  } catch (error) {
+    console.warn(`[xcache] TMDB id resolver failed for ${type}:${parsed.tmdbId || parsed.id}`, error instanceof Error ? error.message : error);
+  }
+  return parsed.id;
+}
+
+function getCachedCandidatesForAnyId(runtime: Runtime, type: MediaType, ids: string[]): RankedCandidate[] | undefined {
+  for (const id of ids) {
+    const cached = getCachedCandidates(runtime, type, id);
+    if (cached) return cached;
+  }
+  return undefined;
+}
+
+function findReadyForAnyId(
+  runtime: Runtime,
+  type: MediaType,
+  ids: string[],
+  season?: number,
+  episode?: number
+): StoredJob | undefined {
+  for (const id of ids) {
+    const local = runtime.store.findReady(type, id, season, episode);
+    if (local) return local;
+  }
+  return undefined;
+}
+
+function cacheCandidates(runtime: Runtime, type: MediaType, id: string, candidates: RankedCandidate[]): void {
+  if (runtime.config.streamCacheTtlMs <= 0 || candidates.length === 0) return;
+  const key = candidateCacheKey(type, id);
+  const expiresAt = Date.now() + runtime.config.streamCacheTtlMs;
+  runtime.streamCandidateCache.set(key, {
+    candidates,
+    expiresAt
+  });
+  runtime.store.upsertStreamCandidates(key, candidates, expiresAt);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function updateLocalStreamTitle(runtime: Runtime, local: StoredJob, candidates: RankedCandidate[]): void {
@@ -676,7 +729,11 @@ function manifest(config: AppConfig, token: string): Record<string, unknown> {
     version: '0.1.0',
     name: 'XCACHE',
     description: 'Self-hosted Stremio cache addon with local qBittorrent and optional Real-Debrid acceleration.',
-    resources: ['stream'],
+    resources: [{
+      name: 'stream',
+      types: ['movie', 'series'],
+      idPrefixes: ['tt', 'tmdb:']
+    }],
     types: ['movie', 'series'],
     catalogs: [],
     behaviorHints: {

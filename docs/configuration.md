@@ -13,6 +13,10 @@
 
 - `REAL_DEBRID_API_TOKEN`: enables RD acceleration when set.
 - `RD_MODE`: `rd_plus_local`, `cached_only`, `local_first`, or `off`.
+- `TMDB_API_KEY`: optional TMDB v3 API key used to resolve `tmdb:` IDs to IMDb `tt` IDs before scraping sources.
+- `TMDB_READ_ACCESS_TOKEN`: optional TMDB read access token alternative to `TMDB_API_KEY`.
+- `XCACHE_TMDB_RESOLVER_TIMEOUT_MS`: TMDB ID resolver timeout. Defaults to `3000`.
+- `XCACHE_TMDB_ID_CACHE_TTL_MS`: TMDB to IMDb ID cache TTL. Defaults to `86400000`.
 - `SCRAPER_STREAM_URLS`: comma-separated Stremio stream endpoint templates.
 - `XCACHE_STREAM_CACHE_TTL_MS`: source stream result cache TTL. Defaults to `600000`.
 - `XCACHE_PLAY_INTENT_TTL_MS`: short playback URL intent TTL. Defaults to `86400000`.
