@@ -17,6 +17,7 @@ import { createInstallToken, isValidInstallToken } from './token.js';
 import { XCacheStore, type StoredJob } from './storage.js';
 import { candidateStreamTitle, localStreamName, streamName } from './stream-format.js';
 import { buildLivePlaylist, buildStatusSnapshot, isFfmpegAvailable, renderStatusSegment } from './status-video.js';
+import { TrackerProvider } from './tracker-provider.js';
 
 interface Runtime {
   config: AppConfig;
@@ -30,6 +31,7 @@ interface Runtime {
   streamCandidateInflight: Map<string, Promise<RankedCandidate[]>>;
   scraper: StremioSourceScraper;
   idResolver: TmdbIdResolver;
+  trackers: TrackerProvider;
 }
 
 interface CachedAvailability {
@@ -75,6 +77,14 @@ const runtime: Runtime = {
     baseUrl: config.tmdbApiBaseUrl,
     timeoutMs: config.tmdbResolverTimeoutMs,
     cacheTtlMs: config.tmdbIdCacheTtlMs
+  }),
+  trackers: new TrackerProvider({
+    enabled: config.trackerInjectionEnabled,
+    listUrl: config.trackerListUrl,
+    extraTrackers: config.trackerExtraTrackers,
+    maxTrackers: config.trackerMax,
+    refreshMs: config.trackerRefreshMs,
+    timeoutMs: config.trackerFetchTimeoutMs
   })
 };
 
@@ -479,6 +489,9 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
     savePath: runtime.config.cacheDir,
     category: 'xcache'
   });
+  if (candidate.infoHash) {
+    scheduleTrackerInjection(runtime, candidate.infoHash);
+  }
 
   const now = Date.now();
   const job: StoredJob = {
@@ -500,6 +513,29 @@ async function startLocalDownload(runtime: Runtime, payload: PlayPayload): Promi
   };
   runtime.store.upsert(job);
   return job;
+}
+
+function scheduleTrackerInjection(runtime: Runtime, infoHash: string): void {
+  if (!runtime.config.trackerInjectionEnabled) return;
+  void injectTrackers(runtime, infoHash)
+    .catch((error) => console.warn('[xcache] tracker injection failed', error instanceof Error ? error.message : error));
+}
+
+async function injectTrackers(runtime: Runtime, infoHash: string): Promise<void> {
+  const trackers = await runtime.trackers.getTrackers();
+  if (trackers.length === 0) return;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await runtime.qbit.addTrackers(infoHash, trackers);
+      return;
+    } catch (error) {
+      lastError = error;
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  throw lastError;
 }
 
 async function waitForPlayableFile(runtime: Runtime, infoHash: string | undefined, fallbackPath: string): Promise<DownloadedVideo | undefined> {

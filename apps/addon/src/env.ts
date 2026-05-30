@@ -27,6 +27,12 @@ export interface AppConfig {
   playIntentTtlMs: number;
   scraperTimeoutMs: number;
   localStreamSearchWaitMs: number;
+  trackerInjectionEnabled: boolean;
+  trackerListUrl?: string;
+  trackerExtraTrackers: string[];
+  trackerMax: number;
+  trackerRefreshMs: number;
+  trackerFetchTimeoutMs: number;
   filterOptions: FilterOptions;
   streamLimit: number;
   startupEviction: boolean;
@@ -76,6 +82,12 @@ export function loadConfig(env = process.env): AppConfig {
     playIntentTtlMs: integerEnv(env.XCACHE_PLAY_INTENT_TTL_MS, 86_400_000, 60_000),
     scraperTimeoutMs: integerEnv(env.XCACHE_SCRAPER_TIMEOUT_MS, 10_000, 500),
     localStreamSearchWaitMs: integerEnv(env.XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS, 2500, 0),
+    trackerInjectionEnabled: booleanEnv(env.XCACHE_TRACKER_INJECTION_ENABLED, false),
+    trackerListUrl: env.XCACHE_TRACKER_LIST_URL || undefined,
+    trackerExtraTrackers: listEnv(env.XCACHE_TRACKER_EXTRA_URLS || ''),
+    trackerMax: integerEnv(env.XCACHE_TRACKER_MAX, 30, 0),
+    trackerRefreshMs: integerEnv(env.XCACHE_TRACKER_REFRESH_MS, 86_400_000, 60_000),
+    trackerFetchTimeoutMs: integerEnv(env.XCACHE_TRACKER_FETCH_TIMEOUT_MS, 5000, 500),
     filterOptions: {
       allowedResolutions: csv(env.XCACHE_ALLOWED_RESOLUTIONS || '1080p,720p'),
       preferredLanguages: csv(env.XCACHE_PREFERRED_LANGUAGES || 'pt-BR,pt,en'),
@@ -118,6 +130,10 @@ function normalizeBasePath(value: string): string {
 
 function csv(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function listEnv(value: string): string[] {
+  return value.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
 }
 
 function numberEnv(value: string | undefined, fallback: number): number {

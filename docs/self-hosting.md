@@ -44,7 +44,18 @@ SCRAPER_STREAM_URLS=https://your-source.example/stream/{type}/{id}.json
 
 Multiple templates can be comma-separated.
 
-## 3. Start Services
+## 3. Optional Tracker Injection
+
+XCACHE can add public trackers to each new qBittorrent download. This may help public torrents find more peers, but it cannot create seeders for dead torrents.
+
+```env
+XCACHE_TRACKER_INJECTION_ENABLED=true
+XCACHE_TRACKER_LIST_URL=https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt
+XCACHE_TRACKER_EXTRA_URLS=
+XCACHE_TRACKER_MAX=30
+```
+
+## 4. Start Services
 
 ```bash
 docker compose -f docker-compose.example.yml up -d --build
@@ -52,7 +63,7 @@ docker compose -f docker-compose.example.yml up -d --build
 
 The compose file exposes only the addon and the BitTorrent peer port. qBittorrent WebUI stays internal through Docker networking.
 
-## 4. Generate Install Token
+## 5. Generate Install Token
 
 ```bash
 docker compose -f docker-compose.example.yml build xcache-addon
@@ -65,7 +76,7 @@ Install this in Stremio:
 https://xcache.example.com/<token>/manifest.json
 ```
 
-## 5. Reverse Proxy
+## 6. Reverse Proxy
 
 Put a reverse proxy in front of the addon:
 
@@ -75,7 +86,7 @@ https://xcache.example.com -> http://127.0.0.1:7331
 
 Use HTTPS. Stremio clients outside your LAN need a public domain or tunnel.
 
-## 6. Cache Policy
+## 7. Cache Policy
 
 Default cache policy:
 

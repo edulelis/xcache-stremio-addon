@@ -22,6 +22,12 @@
 - `XCACHE_PLAY_INTENT_TTL_MS`: short playback URL intent TTL. Defaults to `86400000`.
 - `XCACHE_SCRAPER_TIMEOUT_MS`: per-source request timeout. Defaults to `10000`.
 - `XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS`: max wait for source streams when a local cache stream already exists. Defaults to `2500`.
+- `XCACHE_TRACKER_INJECTION_ENABLED`: injects public trackers into newly-started qBittorrent downloads. Defaults to `false`.
+- `XCACHE_TRACKER_LIST_URL`: remote text file with one public tracker per line. Defaults to the `ngosang/trackerslist` best list when set in `.env.example`.
+- `XCACHE_TRACKER_EXTRA_URLS`: comma-separated extra tracker URLs appended after the remote list.
+- `XCACHE_TRACKER_MAX`: maximum trackers injected per torrent. Defaults to `30`.
+- `XCACHE_TRACKER_REFRESH_MS`: tracker list cache TTL. Defaults to `86400000`.
+- `XCACHE_TRACKER_FETCH_TIMEOUT_MS`: tracker list fetch timeout. Defaults to `5000`.
 - `XCACHE_ALLOWED_RESOLUTIONS`: defaults to `1080p,720p`.
 - `XCACHE_PREFERRED_LANGUAGES`: defaults to `pt-BR,pt,en`.
 - `XCACHE_PREFERRED_PROVIDERS`: defaults to `Comando,MicoLeaoDublado,BluDV`.

@@ -9,6 +9,7 @@ This project does not provide a hosted backend. You run the addon, qBittorrent a
 - Adds Stremio streams named `[⚡] / XCACHE` for cached options and `[⬇️] / XCACHE` for qBittorrent fallback options.
 - Prioritizes local cache, then RD, then qBittorrent local download.
 - Starts local qBittorrent downloads in the background and plays a live-ish HLS status video while the file is not ready yet.
+- Optionally injects public trackers into new qBittorrent downloads.
 - Filters/ranks streams for PT-BR-first workflows.
 - Excludes `2160p` by default.
 - Blocks `Cinecalidad` by default unless native Spanish handling is enabled.
@@ -60,6 +61,10 @@ Source calls are bounded by `XCACHE_SCRAPER_TIMEOUT_MS`. When a local cached str
 Stream playback URLs are short server-side intents, not large encoded payloads. This keeps the addon compatible with native Stremio clients such as Android TV, where the web CORS/service-worker layer is not present.
 
 When Real-Debrid is enabled, XCACHE checks instant availability in batches and keeps a short in-memory cache. By default this check runs in the background so stream listing is not blocked by RD latency. Tune that cache with `XCACHE_RD_AVAILABILITY_CACHE_TTL_MS`, or set `XCACHE_RD_AVAILABILITY_BLOCKING=true` if you prefer the initial list to wait for RD status.
+
+## Tracker Injection
+
+Set `XCACHE_TRACKER_INJECTION_ENABLED=true` to add public trackers to each new qBittorrent download. `XCACHE_TRACKER_LIST_URL` can point at a plain text list such as `https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt`; `XCACHE_TRACKER_EXTRA_URLS` can append your own comma-separated trackers. Keep `XCACHE_TRACKER_MAX` modest, usually 20-50, because very large tracker lists can slow announces down.
 
 ## Local Playback
 

@@ -61,6 +61,39 @@ describe('QbittorrentClient', () => {
       .resolves.toBeUndefined();
   });
 
+  it('adds trackers to an existing torrent hash', async () => {
+    const requests: { url: string; body: string }[] = [];
+    const hash = 'c'.repeat(40);
+    const baseUrl = await startServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      requests.push({ url: req.url || '', body });
+
+      if (req.url === '/api/v2/auth/login') {
+        res.setHeader('Set-Cookie', 'SID=ok; HttpOnly');
+        res.end('Ok.');
+        return;
+      }
+      if (req.url === '/api/v2/torrents/addTrackers') {
+        expect(req.headers.cookie).toBe('SID=ok');
+        res.end('Ok.');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const client = new QbittorrentClient(baseUrl, 'user', 'pass');
+    await client.addTrackers(hash, [
+      'udp://tracker.example.com:6969/announce',
+      'https://tracker.example.org/announce'
+    ]);
+
+    const addTrackersRequest = requests.find((request) => request.url === '/api/v2/torrents/addTrackers');
+    expect(addTrackersRequest?.body).toContain(`hash=${hash}`);
+    expect(decodeURIComponent(addTrackersRequest?.body || '')).toContain('udp://tracker.example.com:6969/announce\nhttps://tracker.example.org/announce');
+  });
+
   it('reads torrent status for live playback screens', async () => {
     const hash = 'b'.repeat(40);
     const baseUrl = await startServer(async (req, res) => {

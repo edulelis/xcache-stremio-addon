@@ -57,6 +57,19 @@ export class QbittorrentClient {
     await this.request('/api/v2/torrents/add', { method: 'POST', body: form }, { okStatuses: [409] });
   }
 
+  async addTrackers(hash: string, trackers: string[]): Promise<void> {
+    if (trackers.length === 0) return;
+    const body = new URLSearchParams({
+      hash,
+      urls: trackers.join('\n')
+    });
+    await this.request('/api/v2/torrents/addTrackers', {
+      method: 'POST',
+      body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+  }
+
   async listFiles(hash: string): Promise<QbittorrentFile[]> {
     const response = await this.request(`/api/v2/torrents/files?hash=${encodeURIComponent(hash)}`);
     return await response.json() as QbittorrentFile[];
