@@ -70,6 +70,19 @@ export class QbittorrentClient {
     });
   }
 
+  async deleteTorrents(hashes: string[], deleteFiles: boolean): Promise<void> {
+    if (hashes.length === 0) return;
+    const body = new URLSearchParams({
+      hashes: hashes.join('|'),
+      deleteFiles: String(deleteFiles)
+    });
+    await this.request('/api/v2/torrents/delete', {
+      method: 'POST',
+      body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+  }
+
   async listFiles(hash: string): Promise<QbittorrentFile[]> {
     const response = await this.request(`/api/v2/torrents/files?hash=${encodeURIComponent(hash)}`);
     return await response.json() as QbittorrentFile[];

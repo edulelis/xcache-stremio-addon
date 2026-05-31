@@ -39,6 +39,10 @@ Defaults are tuned for Brazilian Portuguese stream workflows: PT-BR and dual-aud
 - `XCACHE_ALLOW_SPANISH_NATIVE`: defaults to `false`.
 - `CACHE_MAX_BYTES`: defaults to `100GiB`.
 - `CACHE_MIN_FREE_BYTES`: defaults to `50GiB`.
+- `XCACHE_STALE_DOWNLOAD_CLEANUP_ENABLED`: removes stale incomplete qBittorrent downloads. Defaults to `true`.
+- `XCACHE_STALE_DOWNLOAD_MAX_AGE_MS`: age limit for incomplete downloads before cleanup. Defaults to `907200000` (10.5 days).
+- `XCACHE_STALE_DOWNLOAD_CLEANUP_INTERVAL_MS`: cleanup interval. Defaults to `21600000` (6 hours).
+- `XCACHE_STALE_DOWNLOAD_DELETE_FILES`: deletes partial files when removing stale torrents. Defaults to `true`.
 - `XCACHE_AUDIO_DEFAULT_ENABLED`: enables default audio flag correction for completed local MKV files. Defaults to `false`.
 - `XCACHE_AUDIO_LANGUAGE_PRIORITY`: preferred audio language order used only when audio correction is enabled. Defaults to empty.
 - `XCACHE_FFPROBE_PATH`: ffprobe binary path. Defaults to `ffprobe`.

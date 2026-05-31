@@ -99,3 +99,5 @@ Default cache policy:
 - LRU cleanup deletes only ready, inactive, unpinned entries.
 
 The addon stores metadata in SQLite at `CACHE_DB_PATH`.
+
+Incomplete downloads older than `XCACHE_STALE_DOWNLOAD_MAX_AGE_MS` are removed from qBittorrent by the addon cleanup loop. The default is 10.5 days, with partial files deleted.

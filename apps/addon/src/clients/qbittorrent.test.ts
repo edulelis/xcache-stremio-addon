@@ -94,6 +94,35 @@ describe('QbittorrentClient', () => {
     expect(decodeURIComponent(addTrackersRequest?.body || '')).toContain('udp://tracker.example.com:6969/announce\nhttps://tracker.example.org/announce');
   });
 
+  it('deletes torrents with optional files', async () => {
+    const requests: { url: string; body: string }[] = [];
+    const baseUrl = await startServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      requests.push({ url: req.url || '', body });
+
+      if (req.url === '/api/v2/auth/login') {
+        res.setHeader('Set-Cookie', 'SID=ok; HttpOnly');
+        res.end('Ok.');
+        return;
+      }
+      if (req.url === '/api/v2/torrents/delete') {
+        expect(req.headers.cookie).toBe('SID=ok');
+        res.end('Ok.');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const client = new QbittorrentClient(baseUrl, 'user', 'pass');
+    await client.deleteTorrents(['a'.repeat(40), 'b'.repeat(40)], true);
+
+    const deleteRequest = requests.find((request) => request.url === '/api/v2/torrents/delete');
+    expect(deleteRequest?.body).toContain(`hashes=${'a'.repeat(40)}%7C${'b'.repeat(40)}`);
+    expect(deleteRequest?.body).toContain('deleteFiles=true');
+  });
+
   it('reads torrent status for live playback screens', async () => {
     const hash = 'b'.repeat(40);
     const baseUrl = await startServer(async (req, res) => {

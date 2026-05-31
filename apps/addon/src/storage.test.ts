@@ -67,6 +67,36 @@ describe('XCacheStore stream candidate cache', () => {
     store.deleteStreamCandidates('movie:tt1234567');
     expect(store.findStreamCandidates('movie:tt1234567')).toBeUndefined();
   });
+
+  it('lists stale downloads by creation time', async () => {
+    const dbPath = tempDbPath();
+    const store = await XCacheStore.open(dbPath);
+    const now = Date.now();
+    store.upsert({
+      id: 'old',
+      mediaType: 'movie',
+      mediaId: 'tt0000001',
+      path: '',
+      sizeBytes: 0,
+      status: 'downloading',
+      lastAccessedAt: now,
+      createdAt: now - 10_000,
+      active: true
+    });
+    store.upsert({
+      id: 'new',
+      mediaType: 'movie',
+      mediaId: 'tt0000002',
+      path: '',
+      sizeBytes: 0,
+      status: 'downloading',
+      lastAccessedAt: now,
+      createdAt: now,
+      active: true
+    });
+
+    expect(store.listStaleDownloads(now - 1).map((job) => job.id)).toEqual(['old']);
+  });
 });
 
 function tempDbPath(): string {

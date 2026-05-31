@@ -37,6 +37,10 @@ export interface AppConfig {
   filterOptions: FilterOptions;
   streamLimit: number;
   startupEviction: boolean;
+  staleDownloadCleanupEnabled: boolean;
+  staleDownloadMaxAgeMs: number;
+  staleDownloadCleanupIntervalMs: number;
+  staleDownloadDeleteFiles: boolean;
   localReadyMinProgress: number;
   playableWaitMs: number;
   statusVideoMode: StatusVideoMode;
@@ -118,6 +122,10 @@ export function loadConfig(env = process.env): AppConfig {
     },
     streamLimit: numberEnv(env.XCACHE_STREAM_LIMIT, 8),
     startupEviction: booleanEnv(env.XCACHE_STARTUP_EVICTION, true),
+    staleDownloadCleanupEnabled: booleanEnv(env.XCACHE_STALE_DOWNLOAD_CLEANUP_ENABLED, true),
+    staleDownloadMaxAgeMs: integerEnv(env.XCACHE_STALE_DOWNLOAD_MAX_AGE_MS, 907_200_000, 60_000),
+    staleDownloadCleanupIntervalMs: integerEnv(env.XCACHE_STALE_DOWNLOAD_CLEANUP_INTERVAL_MS, 21_600_000, 60_000),
+    staleDownloadDeleteFiles: booleanEnv(env.XCACHE_STALE_DOWNLOAD_DELETE_FILES, true),
     localReadyMinProgress: progressEnv(env.XCACHE_LOCAL_READY_MIN_PROGRESS, 0.98),
     playableWaitMs: numberEnv(env.XCACHE_PLAYABLE_WAIT_MS, 5000),
     statusVideoMode: statusVideoMode(env.XCACHE_STATUS_VIDEO_MODE || 'live_hls'),

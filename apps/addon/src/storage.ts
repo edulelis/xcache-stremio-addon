@@ -65,6 +65,15 @@ export class XCacheStore {
     `).all(mediaType, mediaId, season ?? null, episode ?? null).map(fromRow);
   }
 
+  listStaleDownloads(createdBefore: number, limit = 50): StoredJob[] {
+    return this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE status = 'downloading' AND created_at < ?
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(createdBefore, limit).map(fromRow);
+  }
+
   findById(id: string): StoredJob | undefined {
     const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
     return row ? fromRow(row) : undefined;

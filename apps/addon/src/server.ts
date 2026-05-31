@@ -91,6 +91,9 @@ const runtime: Runtime = {
 if (config.startupEviction) {
   runtime.cache.evictIfNeeded().catch((error) => console.warn('[xcache] startup eviction failed', error));
 }
+if (config.staleDownloadCleanupEnabled) {
+  startStaleDownloadCleanup(runtime);
+}
 
 http.createServer((req, res) => {
   void handleRequest(runtime, req, res).catch((error) => {
@@ -696,6 +699,43 @@ async function handleStatusSegment(
   } catch (error) {
     console.warn('[xcache] status segment failed, falling back to mp4', error);
     sendDownloadingPlaceholder(req, res);
+  }
+}
+
+function startStaleDownloadCleanup(runtime: Runtime): void {
+  setTimeout(() => {
+    void cleanupStaleDownloads(runtime).catch((error) => console.warn('[xcache] stale download cleanup failed', error));
+  }, 30_000).unref();
+
+  setInterval(() => {
+    void cleanupStaleDownloads(runtime).catch((error) => console.warn('[xcache] stale download cleanup failed', error));
+  }, runtime.config.staleDownloadCleanupIntervalMs).unref();
+}
+
+async function cleanupStaleDownloads(runtime: Runtime): Promise<void> {
+  const cutoff = Date.now() - runtime.config.staleDownloadMaxAgeMs;
+  const jobs = runtime.store.listStaleDownloads(cutoff);
+  for (const job of jobs) {
+    if (job.infoHash) {
+      const torrent = await runtime.qbit.getTorrentStatus(job.infoHash).catch(() => undefined);
+      if (torrent && torrent.progress >= runtime.config.localReadyMinProgress) {
+        const video = await findDownloadedVideo(runtime, job.infoHash, job.path).catch(() => undefined);
+        if (video) {
+          markJobReady(runtime, job, video.path);
+          void applyAudioPreference(runtime, video);
+          continue;
+        }
+        console.warn(`[xcache] stale download appears complete but no local file was found: ${job.infoHash}`);
+        continue;
+      }
+
+      await runtime.qbit.deleteTorrents([job.infoHash], runtime.config.staleDownloadDeleteFiles)
+        .catch((error) => console.warn(`[xcache] qBittorrent stale delete failed for ${job.infoHash}`, error));
+    }
+
+    runtime.store.remove(job.id);
+    invalidateStreamCaches(runtime, job.mediaType, [job.mediaId]);
+    console.log(`[xcache] removed stale incomplete download ${job.id} (${job.infoHash || 'no hash'})`);
   }
 }
 
