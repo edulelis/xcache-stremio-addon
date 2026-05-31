@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This project is a public, self-hosted Stremio addon. Treat it as software that other people run on their own servers.
+This project is a public, self-hosted Stremio addon focused on Brazilian Portuguese stream workflows. Treat it as software that other people run on their own servers.
 
 ## Non-Negotiable Security Rules
 
@@ -19,6 +19,7 @@ This project is a public, self-hosted Stremio addon. Treat it as software that o
 
 ## Product Rules
 
+- Defaults should prioritize Brazilian Portuguese and dual-audio workflows, but features must remain configurable for non-PT-BR self-hosters.
 - Stream priority is: local complete cache > RD ready/cacheable > local qBittorrent fallback.
 - RD is an accelerator, not a hard dependency. RD failure must not prevent local fallback.
 - qBittorrent downloads must request sequential download and first/last piece priority.

@@ -1,5 +1,7 @@
 # Self-Hosting XCACHE
 
+XCACHE is optimized for Brazilian Portuguese stream workflows, but it is self-hosted infrastructure: you provide your own server, qBittorrent, cache storage, optional debrid token, and Stremio-compatible stream sources.
+
 ## Requirements
 
 - Node.js 22+ for local development.
@@ -43,6 +45,8 @@ SCRAPER_STREAM_URLS=https://your-source.example/stream/{type}/{id}.json
 ```
 
 Multiple templates can be comma-separated.
+
+For Brazilian Portuguese usage, choose source addons or private indexers that expose PT-BR releases. XCACHE ranks PT-BR and dual-audio results first by default, but it only works with streams returned by the sources you configure.
 
 ## 3. Optional Tracker Injection
 

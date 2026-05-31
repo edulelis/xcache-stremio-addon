@@ -1,6 +1,6 @@
 # XCACHE Stremio Addon
 
-XCACHE is a self-hosted Stremio addon that turns torrent streams into a local cache. It can use Real-Debrid as an optional accelerator, but it is designed to keep working through local qBittorrent when RD is unavailable or slow.
+XCACHE is a self-hosted Stremio addon focused on Brazilian Portuguese stream workflows. It turns torrent streams into a local cache, prioritizes PT-BR sources and audio, and can use Real-Debrid as an optional accelerator while continuing to work through local qBittorrent when RD is unavailable or slow.
 
 This project does not provide a hosted backend. You run the addon, qBittorrent and cache storage on your own server.
 
@@ -10,7 +10,7 @@ This project does not provide a hosted backend. You run the addon, qBittorrent a
 - Prioritizes local cache, then RD, then qBittorrent local download.
 - Starts local qBittorrent downloads in the background and plays a live-ish HLS status video while the file is not ready yet.
 - Optionally injects public trackers into new qBittorrent downloads.
-- Filters/ranks streams for PT-BR-first workflows.
+- Filters/ranks streams for Brazilian Portuguese first workflows.
 - Excludes `2160p` by default.
 - Excludes CAM/TS/TeleSync/TeleCine/screener/workprint style releases by default.
 - Blocks `Cinecalidad` by default unless native Spanish handling is enabled.
@@ -46,6 +46,8 @@ https://xcache.example.com/<your-install-token>/manifest.json
 Replace `https://xcache.example.com` with your own public domain or tunnel.
 
 ## Stream Sources
+
+XCACHE does not bundle or operate a stream indexer. For PT-BR usage, point `SCRAPER_STREAM_URLS` at Stremio-compatible sources that expose Brazilian Portuguese torrents, for example your own configured instances or public addons focused on Brazilian releases.
 
 Set `SCRAPER_STREAM_URLS` to one or more Stremio-compatible stream endpoint templates:
 

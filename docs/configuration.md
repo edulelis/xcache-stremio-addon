@@ -1,5 +1,7 @@
 # Configuration Reference
 
+Defaults are tuned for Brazilian Portuguese stream workflows: PT-BR and dual-audio releases are preferred, low-quality theatrical captures are blocked, and 2160p is excluded unless explicitly enabled.
+
 ## Required
 
 - `PUBLIC_BASE_URL`: public HTTPS base URL of your addon.
