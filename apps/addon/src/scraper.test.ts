@@ -9,6 +9,7 @@ const options: FilterOptions = {
   preferredLanguages: ['pt-BR', 'pt', 'en'],
   preferredProviders: ['Comando'],
   blockedProviders: ['Cinecalidad'],
+  blockedQualityTags: ['CAM', 'TS'],
   allowSpanishNative: false
 };
 

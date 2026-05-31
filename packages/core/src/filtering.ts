@@ -1,6 +1,9 @@
 import type { FilterOptions, StreamCandidate } from './types.js';
 
 export function rejectionReason(candidate: StreamCandidate, options: FilterOptions): string | undefined {
+  const qualityTag = blockedQualityTag(candidate, options.blockedQualityTags);
+  if (qualityTag) return `quality:${qualityTag}`;
+
   const resolution = candidate.resolution?.toLowerCase();
   if (resolution && !options.allowedResolutions.map((item) => item.toLowerCase()).includes(resolution)) {
     return `resolution:${resolution}`;
@@ -24,4 +27,18 @@ export function rejectionReason(candidate: StreamCandidate, options: FilterOptio
 
 export function filterCandidates(candidates: StreamCandidate[], options: FilterOptions): StreamCandidate[] {
   return candidates.filter((candidate) => !rejectionReason(candidate, options));
+}
+
+function blockedQualityTag(candidate: StreamCandidate, blockedQualityTags: string[]): string | undefined {
+  const text = `${candidate.name}\n${candidate.title}`.normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  return blockedQualityTags.find((tag) => qualityTagMatches(text, tag));
+}
+
+function qualityTagMatches(text: string, tag: string): boolean {
+  const normalizedTag = tag.trim().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+  if (!normalizedTag) return false;
+  const escaped = normalizedTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const boundary = String.raw`(?:^|[\s._()[\]{}+\-])`;
+  const endBoundary = String.raw`(?:$|[\s._()[\]{}+\-])`;
+  return new RegExp(`${boundary}${escaped}${endBoundary}`, 'i').test(text);
 }

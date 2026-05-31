@@ -22,7 +22,13 @@ export class StremioSourceScraper {
 
     const fulfilled = all.filter((result) => result.status === 'fulfilled');
     if (this.templates.length > 0 && fulfilled.length === 0) {
-      throw new Error('all scraper sources failed');
+      const failures = all
+        .map((result, index) => result.status === 'rejected'
+          ? `${sourceName(this.templates[index] || 'source')}: ${failureMessage(result.reason)}`
+          : undefined)
+        .filter(Boolean)
+        .join('; ');
+      throw new Error(`all scraper sources failed${failures ? ` (${failures})` : ''}`);
     }
 
     const candidates = fulfilled.flatMap((result) => result.value);
@@ -49,4 +55,9 @@ function sourceName(url: string): string {
   } catch {
     return 'source';
   }
+}
+
+function failureMessage(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  return String(reason);
 }

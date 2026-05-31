@@ -32,6 +32,7 @@
 - `XCACHE_PREFERRED_LANGUAGES`: defaults to `pt-BR,pt,en`.
 - `XCACHE_PREFERRED_PROVIDERS`: defaults to `Comando,MicoLeaoDublado,BluDV`.
 - `XCACHE_BLOCKED_PROVIDERS`: defaults to `Cinecalidad`.
+- `XCACHE_BLOCKED_QUALITY_TAGS`: low-quality release tags excluded before ranking. Defaults to CAM/TS/TeleSync/TeleCine/screener/workprint style tags.
 - `XCACHE_ALLOW_SPANISH_NATIVE`: defaults to `false`.
 - `CACHE_MAX_BYTES`: defaults to `100GiB`.
 - `CACHE_MIN_FREE_BYTES`: defaults to `50GiB`.

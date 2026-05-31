@@ -12,6 +12,7 @@ This project does not provide a hosted backend. You run the addon, qBittorrent a
 - Optionally injects public trackers into new qBittorrent downloads.
 - Filters/ranks streams for PT-BR-first workflows.
 - Excludes `2160p` by default.
+- Excludes CAM/TS/TeleSync/TeleCine/screener/workprint style releases by default.
 - Blocks `Cinecalidad` by default unless native Spanish handling is enabled.
 - Keeps cache inside `CACHE_DIR` and evicts least-recently-used files above the configured limit.
 

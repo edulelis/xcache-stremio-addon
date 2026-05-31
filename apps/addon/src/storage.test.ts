@@ -45,6 +45,28 @@ describe('XCacheStore stream candidate cache', () => {
 
     expect(store.findPlayIntent('intent1')).toEqual({ payload, expiresAt });
   });
+
+  it('finds active downloads and deletes stream candidates', async () => {
+    const dbPath = tempDbPath();
+    const store = await XCacheStore.open(dbPath);
+    const now = Date.now();
+    store.upsert({
+      id: 'job1',
+      mediaType: 'movie',
+      mediaId: 'tt1234567',
+      path: '',
+      sizeBytes: 0,
+      status: 'downloading',
+      lastAccessedAt: now,
+      createdAt: now,
+      active: true
+    });
+    store.upsertStreamCandidates('movie:tt1234567', [candidate('cached')], now + 60_000);
+
+    expect(store.findActiveDownloads('movie', 'tt1234567')).toHaveLength(1);
+    store.deleteStreamCandidates('movie:tt1234567');
+    expect(store.findStreamCandidates('movie:tt1234567')).toBeUndefined();
+  });
 });
 
 function tempDbPath(): string {

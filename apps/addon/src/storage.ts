@@ -54,6 +54,17 @@ export class XCacheStore {
     return row ? fromRow(row) : undefined;
   }
 
+  findActiveDownloads(mediaType: MediaType, mediaId: string, season?: number, episode?: number): StoredJob[] {
+    return this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE media_type = ? AND media_id = ? AND status = 'downloading' AND active = 1
+        AND COALESCE(season, -1) = COALESCE(?, -1)
+        AND COALESCE(episode, -1) = COALESCE(?, -1)
+      ORDER BY last_accessed_at DESC
+      LIMIT 10
+    `).all(mediaType, mediaId, season ?? null, episode ?? null).map(fromRow);
+  }
+
   findById(id: string): StoredJob | undefined {
     const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
     return row ? fromRow(row) : undefined;
@@ -137,6 +148,10 @@ export class XCacheStore {
         expires_at = excluded.expires_at,
         updated_at = excluded.updated_at
     `).run(key, JSON.stringify(candidates), expiresAt, Date.now());
+  }
+
+  deleteStreamCandidates(key: string): void {
+    this.db.prepare('DELETE FROM stream_cache WHERE key = ?').run(key);
   }
 
   findPlayIntent<TPayload>(id: string): StoredPlayIntent<TPayload> | undefined {

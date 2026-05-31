@@ -36,6 +36,7 @@ export interface FilterOptions {
   allowedResolutions: string[];
   preferredLanguages: string[];
   blockedProviders: string[];
+  blockedQualityTags: string[];
   preferredProviders: string[];
   allowSpanishNative: boolean;
   nativeLanguage?: string;

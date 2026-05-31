@@ -180,10 +180,19 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
 
 async function handleStream(runtime: Runtime, token: string, type: MediaType, id: string, res: http.ServerResponse): Promise<void> {
   const parsed = parseMediaId(type, id);
-  const scrapeId = await resolveScrapeId(runtime, type, parsed);
-  const lookupIds = uniqueStrings([parsed.id, scrapeId]);
+  let scrapeId = parsed.id;
+  let lookupIds = [parsed.id];
   const streams = [];
-  const local = findReadyForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+  await promoteCompletedJobsForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+  let local = findReadyForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+  if (!local) {
+    scrapeId = await resolveScrapeId(runtime, type, parsed);
+    lookupIds = uniqueStrings([parsed.id, scrapeId]);
+    if (scrapeId !== parsed.id) {
+      await promoteCompletedJobsForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+      local = findReadyForAnyId(runtime, type, lookupIds, parsed.season, parsed.episode);
+    }
+  }
   let candidates = getCachedCandidatesForAnyId(runtime, type, lookupIds);
   if (local) {
     const fileName = path.basename(local.path);
@@ -206,7 +215,7 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
       candidates = await cachedCandidateSearchWithin(runtime, type, scrapeId, runtime.config.localStreamSearchWaitMs);
       if (candidates && scrapeId !== parsed.id) cacheCandidates(runtime, type, parsed.id, candidates);
       if (!candidates) {
-        sendJson(res, 200, { streams });
+        sendJson(res, 200, { streams }, 'no-store');
         return;
       }
     }
@@ -234,7 +243,7 @@ async function handleStream(runtime: Runtime, token: string, type: MediaType, id
     });
   }
 
-  sendJson(res, 200, { streams });
+  sendJson(res, 200, { streams }, 'no-store');
 }
 
 async function cachedCandidateSearch(runtime: Runtime, type: MediaType, id: string): Promise<RankedCandidate[]> {
@@ -318,6 +327,25 @@ function getCachedCandidatesForAnyId(runtime: Runtime, type: MediaType, ids: str
   return undefined;
 }
 
+async function promoteCompletedJobsForAnyId(
+  runtime: Runtime,
+  type: MediaType,
+  ids: string[],
+  season?: number,
+  episode?: number
+): Promise<void> {
+  const seen = new Set<string>();
+  const jobs = ids.flatMap((id) => runtime.store.findActiveDownloads(type, id, season, episode));
+  await Promise.all(jobs.map(async (job) => {
+    if (seen.has(job.id)) return;
+    seen.add(job.id);
+    const video = await findDownloadedVideo(runtime, job.infoHash, job.path).catch(() => undefined);
+    if (!video) return;
+    markJobReady(runtime, job, video.path, ids);
+    void applyAudioPreference(runtime, video);
+  }));
+}
+
 function findReadyForAnyId(
   runtime: Runtime,
   type: MediaType,
@@ -341,6 +369,14 @@ function cacheCandidates(runtime: Runtime, type: MediaType, id: string, candidat
     expiresAt
   });
   runtime.store.upsertStreamCandidates(key, candidates, expiresAt);
+}
+
+function invalidateStreamCaches(runtime: Runtime, type: MediaType, ids: string[]): void {
+  for (const id of ids) {
+    const key = candidateCacheKey(type, id);
+    runtime.streamCandidateCache.delete(key);
+    runtime.store.deleteStreamCandidates(key);
+  }
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -425,6 +461,7 @@ async function handleCandidate(
     lastAccessedAt: Date.now()
   };
   runtime.store.upsert(readyJob);
+  invalidateStreamCaches(runtime, readyJob.mediaType, [readyJob.mediaId]);
   await applyAudioPreference(runtime, video);
   sendFileWithRange(req, res, video.path);
 }
@@ -662,7 +699,7 @@ async function handleStatusSegment(
   }
 }
 
-function markJobReady(runtime: Runtime, job: StoredJob, filePath: string): StoredJob {
+function markJobReady(runtime: Runtime, job: StoredJob, filePath: string, extraMediaIds: string[] = []): StoredJob {
   const readyJob: StoredJob = {
     ...job,
     status: 'ready',
@@ -671,6 +708,7 @@ function markJobReady(runtime: Runtime, job: StoredJob, filePath: string): Store
     lastAccessedAt: Date.now()
   };
   runtime.store.upsert(readyJob);
+  invalidateStreamCaches(runtime, readyJob.mediaType, uniqueStrings([readyJob.mediaId, ...extraMediaIds]));
   return readyJob;
 }
 
@@ -843,7 +881,8 @@ function sendDownloadingPlaceholder(req: http.IncomingMessage, res: http.ServerR
   sendFileWithRange(req, res, downloadingPlaceholderPath);
 }
 
-function sendJson(res: http.ServerResponse, statusCode: number, body: unknown): void {
+function sendJson(res: http.ServerResponse, statusCode: number, body: unknown, cacheControl?: string): void {
+  if (cacheControl) res.setHeader('Cache-Control', cacheControl);
   res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }

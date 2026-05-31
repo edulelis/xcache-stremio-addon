@@ -7,6 +7,7 @@ const options: FilterOptions = {
   preferredLanguages: ['pt-BR', 'pt', 'en'],
   preferredProviders: ['Comando', 'MicoLeaoDublado', 'BluDV'],
   blockedProviders: ['Cinecalidad'],
+  blockedQualityTags: ['CAM', 'HDCAM', 'HDTS', 'TS', 'TELESYNC', 'TELECINE', 'HDTC', 'TC', 'CAMRIP', 'SCREENER', 'DVDSCR', 'WORKPRINT'],
   allowSpanishNative: false
 };
 
@@ -41,6 +42,21 @@ describe('rankCandidates', () => {
     );
 
     expect(ranked).toHaveLength(1);
+  });
+
+  it('filters low quality theatrical captures', () => {
+    const ranked = rankCandidates(
+      [
+        candidate('cam', { title: 'Movie.2026.1080p.HDCAM.DUAL' }),
+        candidate('ts', { title: 'Movie.2026.1080p.TeleSync.DUAL' }),
+        candidate('tc', { title: 'Movie.2026.1080p.HDTC.DUAL' }),
+        candidate('scr', { title: 'Movie.2026.1080p.DVDSCR.DUAL' }),
+        candidate('webdl', { title: 'Movie.2026.1080p.WEB-DL.DUAL' })
+      ],
+      options
+    );
+
+    expect(ranked.map((item) => item.name)).toEqual(['webdl']);
   });
 });
 

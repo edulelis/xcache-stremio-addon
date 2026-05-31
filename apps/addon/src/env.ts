@@ -52,6 +52,23 @@ export interface AppConfig {
 }
 
 const GIB = 1024 ** 3;
+const DEFAULT_BLOCKED_QUALITY_TAGS = [
+  'CAM',
+  'HDCAM',
+  'HDTS',
+  'TS',
+  'TELESYNC',
+  'TELECINE',
+  'HDTC',
+  'TC',
+  'CAMRIP',
+  'SCREENER',
+  'DVDSCR',
+  'DVDSCREENER',
+  'WORKPRINT',
+  'WP',
+  'PDVD'
+];
 
 export function loadConfig(env = process.env): AppConfig {
   const cacheDir = env.CACHE_DIR || '/cache';
@@ -93,6 +110,7 @@ export function loadConfig(env = process.env): AppConfig {
       preferredLanguages: csv(env.XCACHE_PREFERRED_LANGUAGES || 'pt-BR,pt,en'),
       preferredProviders,
       blockedProviders: csv(env.XCACHE_BLOCKED_PROVIDERS || 'Cinecalidad'),
+      blockedQualityTags: csv(env.XCACHE_BLOCKED_QUALITY_TAGS || DEFAULT_BLOCKED_QUALITY_TAGS.join(',')),
       allowSpanishNative: booleanEnv(env.XCACHE_ALLOW_SPANISH_NATIVE, false),
       nativeLanguage: env.XCACHE_NATIVE_LANGUAGE || undefined
     },
