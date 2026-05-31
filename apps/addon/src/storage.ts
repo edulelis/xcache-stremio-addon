@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import sqlite3Wasm from 'node-sqlite3-wasm';
 import type { CacheEntry, MediaType, RankedCandidate } from '@xcache/core';
+
+const { Database: WasmDatabase } = sqlite3Wasm;
+type WasmDatabaseInstance = InstanceType<typeof WasmDatabase>;
 
 export interface StoredJob extends CacheEntry {
   infoHash?: string;
@@ -23,11 +27,13 @@ export interface StoredPlayIntent<TPayload> {
 
 type DatabaseSync = {
   exec(sql: string): void;
-  prepare(sql: string): {
-    all(...params: unknown[]): Record<string, unknown>[];
-    get(...params: unknown[]): Record<string, unknown> | undefined;
-    run(...params: unknown[]): unknown;
-  };
+  prepare(sql: string): StatementSync;
+};
+
+type StatementSync = {
+  all(...params: unknown[]): Record<string, unknown>[];
+  get(...params: unknown[]): Record<string, unknown> | undefined;
+  run(...params: unknown[]): unknown;
 };
 
 export class XCacheStore {
@@ -35,8 +41,7 @@ export class XCacheStore {
 
   static async open(dbPath: string): Promise<XCacheStore> {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    const sqlite = await import('node:sqlite') as unknown as { DatabaseSync: new (path: string) => DatabaseSync };
-    const db = new sqlite.DatabaseSync(dbPath);
+    const db = new SqliteDatabaseAdapter(new WasmDatabase(dbPath));
     const store = new XCacheStore(db);
     store.migrate();
     return store;
@@ -244,6 +249,56 @@ export class XCacheStore {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
+}
+
+class SqliteDatabaseAdapter implements DatabaseSync {
+  constructor(private readonly db: WasmDatabaseInstance) {}
+
+  exec(sql: string): void {
+    this.db.exec(sql);
+  }
+
+  prepare(sql: string): StatementSync {
+    return new SqliteStatementAdapter(this.db, sql);
+  }
+}
+
+class SqliteStatementAdapter implements StatementSync {
+  constructor(
+    private readonly db: WasmDatabaseInstance,
+    private readonly sql: string
+  ) {}
+
+  all(...params: unknown[]): Record<string, unknown>[] {
+    return this.db.all(this.sql, bindParams(params)) as Record<string, unknown>[];
+  }
+
+  get(...params: unknown[]): Record<string, unknown> | undefined {
+    return this.db.get(this.sql, bindParams(params)) as Record<string, unknown> | null ?? undefined;
+  }
+
+  run(...params: unknown[]): unknown {
+    return this.db.run(this.sql, bindParams(params));
+  }
+}
+
+function bindParams(params: unknown[]): Parameters<WasmDatabaseInstance['run']>[1] {
+  if (params.length === 0) return undefined;
+  const values = params.map((param) => {
+    if (param === undefined) return null;
+    if (
+      param === null ||
+      typeof param === 'string' ||
+      typeof param === 'number' ||
+      typeof param === 'bigint' ||
+      typeof param === 'boolean' ||
+      param instanceof Uint8Array
+    ) {
+      return param;
+    }
+    throw new TypeError(`Unsupported SQLite bind value: ${typeof param}`);
+  });
+  return values.length === 1 ? values[0] : values;
 }
 
 function fromRow(row: Record<string, unknown>): StoredJob {

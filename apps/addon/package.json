@@ -13,6 +13,7 @@
     "print-token": "tsx src/print-token.ts"
   },
   "dependencies": {
-    "@xcache/core": "file:../../packages/core"
+    "@xcache/core": "file:../../packages/core",
+    "node-sqlite3-wasm": "^0.8.57"
   }
 }
