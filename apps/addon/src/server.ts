@@ -70,7 +70,7 @@ const runtime: Runtime = {
   rdAvailabilityInflight: new Set(),
   streamCandidateCache: new Map(),
   streamCandidateInflight: new Map(),
-  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions, config.scraperTimeoutMs),
+  scraper: new StremioSourceScraper(config.scraperStreamUrls, config.filterOptions, config.scraperTimeoutMs, config.scraperSettleMs),
   idResolver: new TmdbIdResolver({
     apiKey: config.tmdbApiKey,
     readAccessToken: config.tmdbReadAccessToken,

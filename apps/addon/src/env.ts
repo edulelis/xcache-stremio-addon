@@ -26,6 +26,7 @@ export interface AppConfig {
   streamCacheTtlMs: number;
   playIntentTtlMs: number;
   scraperTimeoutMs: number;
+  scraperSettleMs: number;
   localStreamSearchWaitMs: number;
   trackerInjectionEnabled: boolean;
   trackerListUrl?: string;
@@ -98,6 +99,7 @@ export function loadConfig(env = process.env): AppConfig {
     streamCacheTtlMs: integerEnv(env.XCACHE_STREAM_CACHE_TTL_MS, 600_000, 0),
     playIntentTtlMs: integerEnv(env.XCACHE_PLAY_INTENT_TTL_MS, 86_400_000, 60_000),
     scraperTimeoutMs: integerEnv(env.XCACHE_SCRAPER_TIMEOUT_MS, 10_000, 500),
+    scraperSettleMs: integerEnv(env.XCACHE_SCRAPER_SETTLE_MS, 750, 0),
     localStreamSearchWaitMs: integerEnv(env.XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS, 2500, 0),
     trackerInjectionEnabled: booleanEnv(env.XCACHE_TRACKER_INJECTION_ENABLED, false),
     trackerListUrl: env.XCACHE_TRACKER_LIST_URL || undefined,

@@ -13,14 +13,12 @@ const options: FilterOptions = {
   allowSpanishNative: false
 };
 
-let server: http.Server | undefined;
+const servers: http.Server[] = [];
 
 afterEach(async () => {
-  if (!server) return;
-  await new Promise<void>((resolve, reject) => {
-    server?.close((error) => error ? reject(error) : resolve());
-  });
-  server = undefined;
+  await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  })));
 });
 
 describe('StremioSourceScraper', () => {
@@ -60,11 +58,42 @@ describe('StremioSourceScraper', () => {
 
     await expect(scraper.search('movie', 'tmdb:1')).rejects.toThrow('all scraper sources failed');
   });
+
+  it('does not wait for slow sources after a source returned candidates', async () => {
+    const fastBaseUrl = await serve((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        streams: [{
+          name: '[TORRENT] Comando 1080p',
+          title: 'Movie.2025.1080p.WEB-DL.DUAL-SF\n👤 12 💾 3.1 GB 🔎 Torrentio|Comando\n🇧🇷',
+          infoHash: 'a'.repeat(40)
+        }]
+      }));
+    });
+    const slowBaseUrl = await serve(async (_req, res) => {
+      await sleep(200);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ streams: [] }));
+    });
+    const scraper = new StremioSourceScraper(
+      [`${fastBaseUrl}/stream/{type}/{id}.json`, `${slowBaseUrl}/stream/{type}/{id}.json`],
+      options,
+      1000,
+      20
+    );
+
+    const started = Date.now();
+    const results = await scraper.search('movie', 'tmdb:1');
+
+    expect(Date.now() - started).toBeLessThan(150);
+    expect(results).toHaveLength(1);
+  });
 });
 
 async function serve(handler: http.RequestListener): Promise<string> {
-  server = http.createServer(handler);
-  await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+  const server = http.createServer(handler);
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
   return `http://127.0.0.1:${address.port}`;
 }

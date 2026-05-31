@@ -21,6 +21,7 @@
 - `XCACHE_STREAM_CACHE_TTL_MS`: source stream result cache TTL. Defaults to `600000`.
 - `XCACHE_PLAY_INTENT_TTL_MS`: short playback URL intent TTL. Defaults to `86400000`.
 - `XCACHE_SCRAPER_TIMEOUT_MS`: per-source request timeout. Defaults to `10000`.
+- `XCACHE_SCRAPER_SETTLE_MS`: after one source returns candidates, wait this long for other sources before returning the list. Defaults to `750`.
 - `XCACHE_LOCAL_STREAM_SEARCH_WAIT_MS`: max wait for source streams when a local cache stream already exists. Defaults to `2500`.
 - `XCACHE_TRACKER_INJECTION_ENABLED`: injects public trackers into newly-started qBittorrent downloads. Defaults to `false`.
 - `XCACHE_TRACKER_LIST_URL`: remote text file with one public tracker per line. Defaults to the `ngosang/trackerslist` best list when set in `.env.example`.
