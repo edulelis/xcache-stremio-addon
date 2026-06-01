@@ -101,3 +101,9 @@ Default cache policy:
 The addon stores metadata in SQLite at `CACHE_DB_PATH`.
 
 Incomplete downloads older than `XCACHE_STALE_DOWNLOAD_MAX_AGE_MS` are removed from qBittorrent by the addon cleanup loop. The default is 10.5 days, with partial files deleted.
+
+## 8. Browser Playback
+
+`XCACHE_TRANSCODE_MODE=auto` makes browser clients receive HLS H.264/AAC when a cached local file uses HEVC video or AC3/EAC3/DTS/TrueHD audio. Native players such as ExoPlayer, VLC, IINA, and mpv keep direct playback in `auto` mode.
+
+During HLS transcode, audio is selected with `XCACHE_TRANSCODE_AUDIO_LANGUAGE_PRIORITY`. The default prefers Brazilian Portuguese first, then Portuguese, then English.

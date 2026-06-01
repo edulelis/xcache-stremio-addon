@@ -18,6 +18,7 @@ import { XCacheStore, type StoredJob } from './storage.js';
 import { candidateStreamTitle, localStreamName, streamName } from './stream-format.js';
 import { buildLivePlaylist, buildStatusSnapshot, isFfmpegAvailable, renderStatusSegment } from './status-video.js';
 import { TrackerProvider } from './tracker-provider.js';
+import { HlsTranscodeManager, probeMedia, shouldUseBrowserTranscode, waitForFile, type HlsSession } from './transcode.js';
 
 interface Runtime {
   config: AppConfig;
@@ -32,6 +33,7 @@ interface Runtime {
   scraper: StremioSourceScraper;
   idResolver: TmdbIdResolver;
   trackers: TrackerProvider;
+  transcodes: HlsTranscodeManager;
 }
 
 interface CachedAvailability {
@@ -54,6 +56,12 @@ interface DownloadedVideo {
   path: string;
   progress?: number;
 }
+
+type ReadyLocalVideo =
+  | { status: 'ready'; job: StoredJob; video: DownloadedVideo }
+  | { status: 'not_found' }
+  | { status: 'not_ready' }
+  | { status: 'missing_file' };
 
 const downloadingPlaceholderPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../assets/downloading.mp4');
 
@@ -85,7 +93,8 @@ const runtime: Runtime = {
     maxTrackers: config.trackerMax,
     refreshMs: config.trackerRefreshMs,
     timeoutMs: config.trackerFetchTimeoutMs
-  })
+  }),
+  transcodes: new HlsTranscodeManager()
 };
 
 if (config.startupEviction) {
@@ -142,8 +151,18 @@ async function handleRequest(runtime: Runtime, req: http.IncomingMessage, res: h
     return;
   }
 
+  if (parts[1] === 'play' && parts[2] === 'local' && parts[3] && parts[4] === 'transcode' && parts[5] === 'index.m3u8') {
+    await handleLocalTranscodePlaylist(runtime, req, res, parts[3]);
+    return;
+  }
+
+  if (parts[1] === 'play' && parts[2] === 'local' && parts[3] && parts[4] === 'transcode' && parts[5]) {
+    await handleLocalTranscodeSegment(runtime, req, res, parts[3], parts[5]);
+    return;
+  }
+
   if (parts[1] === 'play' && parts[2] === 'local' && parts[3]) {
-    await handleLocal(runtime, req, res, parts[3]);
+    await handleLocal(runtime, req, res, token, parts[3]);
     return;
   }
 
@@ -400,25 +419,136 @@ function candidateCacheKey(type: MediaType, id: string): string {
   return `${type}:${id}`;
 }
 
-async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, jobId: string): Promise<void> {
-  const job = runtime.store.findById(jobId);
-  if (!job?.path || job.status !== 'ready') {
+async function handleLocal(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, token: string, jobId: string): Promise<void> {
+  const local = await resolveReadyLocalVideo(runtime, jobId);
+  if (local.status === 'not_found') {
     sendJson(res, 404, { error: 'local_stream_not_found' });
     return;
   }
-  const video = await findDownloadedVideo(runtime, job.infoHash, job.path);
-  if (!video) {
-    runtime.store.upsert({ ...job, status: 'downloading', lastAccessedAt: Date.now() });
+  if (local.status === 'not_ready') {
     sendDownloadingPlaceholder(req, res);
     return;
   }
-  if (!fs.existsSync(video.path)) {
+  if (local.status === 'missing_file') {
     sendJson(res, 404, { error: 'local_file_missing' });
     return;
   }
+  await sendReadyLocalPlayback(runtime, req, res, token, local.job, local.video);
+}
+
+async function handleLocalTranscodePlaylist(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, jobId: string): Promise<void> {
+  const local = await resolveReadyLocalVideo(runtime, jobId);
+  if (local.status !== 'ready') {
+    sendJson(res, 404, { error: 'local_stream_not_found' });
+    return;
+  }
+
+  try {
+    const session = await ensureTranscodeSession(runtime, local.job, local.video);
+    if (!await waitForFile(session.playlistPath, runtime.config.transcodePlaylistWaitMs)) {
+      sendJson(res, 503, { error: 'transcode_playlist_not_ready' }, 'no-store');
+      return;
+    }
+
+    sendText(
+      res,
+      200,
+      'application/vnd.apple.mpegurl; charset=utf-8',
+      fs.readFileSync(session.playlistPath, 'utf8'),
+      'no-store'
+    );
+  } catch (error) {
+    console.warn('[xcache] local HLS transcode playlist failed', error);
+    sendJson(res, 500, { error: 'transcode_failed' }, 'no-store');
+  }
+}
+
+async function handleLocalTranscodeSegment(runtime: Runtime, req: http.IncomingMessage, res: http.ServerResponse, jobId: string, segmentName: string): Promise<void> {
+  if (!/^segment-\d+\.ts$/.test(segmentName)) {
+    sendJson(res, 404, { error: 'segment_not_found' });
+    return;
+  }
+
+  const local = await resolveReadyLocalVideo(runtime, jobId);
+  if (local.status !== 'ready') {
+    sendJson(res, 404, { error: 'local_stream_not_found' });
+    return;
+  }
+
+  try {
+    const session = await ensureTranscodeSession(runtime, local.job, local.video);
+    const segmentPath = path.join(session.directory, segmentName);
+    if (!await waitForFile(segmentPath, runtime.config.transcodeSegmentWaitMs)) {
+      sendJson(res, 404, { error: 'segment_not_ready' }, 'no-store');
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    sendFileWithRange(req, res, segmentPath);
+  } catch (error) {
+    console.warn('[xcache] local HLS transcode segment failed', error);
+    sendJson(res, 500, { error: 'transcode_failed' }, 'no-store');
+  }
+}
+
+async function resolveReadyLocalVideo(runtime: Runtime, jobId: string): Promise<ReadyLocalVideo> {
+  const job = runtime.store.findById(jobId);
+  if (!job?.path || job.status !== 'ready') return { status: 'not_found' };
+
+  const video = await findDownloadedVideo(runtime, job.infoHash, job.path);
+  if (!video) {
+    runtime.store.upsert({ ...job, status: 'downloading', lastAccessedAt: Date.now() });
+    return { status: 'not_ready' };
+  }
+  if (!fs.existsSync(video.path)) return { status: 'missing_file' };
+  return { status: 'ready', job, video };
+}
+
+async function sendReadyLocalPlayback(
+  runtime: Runtime,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  token: string,
+  job: StoredJob,
+  video: DownloadedVideo
+): Promise<void> {
   runtime.store.touch(job.id);
+
+  if (await shouldTranscodeForRequest(runtime, req, video)) {
+    redirect(res, `${runtime.config.publicBaseUrl}/${token}/play/local/${encodeURIComponent(job.id)}/transcode/index.m3u8`);
+    return;
+  }
+
   await applyAudioPreference(runtime, video);
   sendFileWithRange(req, res, video.path);
+}
+
+async function shouldTranscodeForRequest(runtime: Runtime, req: http.IncomingMessage, video: DownloadedVideo): Promise<boolean> {
+  try {
+    const media = await probeMedia(video.path, runtime.config.ffprobePath);
+    return shouldUseBrowserTranscode(req.headers['user-agent'], media, transcodeConfig(runtime));
+  } catch (error) {
+    console.warn('[xcache] media probe failed, using direct playback', error);
+    return false;
+  }
+}
+
+async function ensureTranscodeSession(runtime: Runtime, job: StoredJob, video: DownloadedVideo): Promise<HlsSession> {
+  const media = await probeMedia(video.path, runtime.config.ffprobePath);
+  return await runtime.transcodes.ensureSession(job.id, video.path, media, transcodeConfig(runtime));
+}
+
+function transcodeConfig(runtime: Runtime) {
+  return {
+    mode: runtime.config.transcodeMode,
+    cacheDir: runtime.config.transcodeCacheDir,
+    segmentSeconds: runtime.config.transcodeSegmentSeconds,
+    preset: runtime.config.transcodePreset,
+    crf: runtime.config.transcodeCrf,
+    audioBitrate: runtime.config.transcodeAudioBitrate,
+    audioLanguagePriority: runtime.config.transcodeAudioLanguagePriority,
+    ffmpegPath: runtime.config.statusFfmpegPath,
+    ffprobePath: runtime.config.ffprobePath
+  };
 }
 
 async function handleCandidate(
@@ -465,8 +595,7 @@ async function handleCandidate(
   };
   runtime.store.upsert(readyJob);
   invalidateStreamCaches(runtime, readyJob.mediaType, [readyJob.mediaId]);
-  await applyAudioPreference(runtime, video);
-  sendFileWithRange(req, res, video.path);
+  await sendReadyLocalPlayback(runtime, req, res, installToken, readyJob, video);
 }
 
 async function handleCandidateStatusPlaylist(

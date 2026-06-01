@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   deploy:
+    env:
+      NODE_OPTIONS: --no-deprecation
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -26,7 +28,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
       - run: npm ci
       - run: npm run build --workspace @xcache/configure
       - uses: actions/configure-pages@v6

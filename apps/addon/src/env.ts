@@ -1,5 +1,6 @@
 import type { FilterOptions, RdMode } from '@xcache/core';
 import type { StatusVideoMode } from './status-video.js';
+import type { TranscodeMode } from './transcode.js';
 
 export interface AppConfig {
   port: number;
@@ -54,6 +55,15 @@ export interface AppConfig {
   statusFontFile?: string;
   audioDefaultEnabled: boolean;
   audioLanguagePriority: string[];
+  transcodeMode: TranscodeMode;
+  transcodeCacheDir: string;
+  transcodeSegmentSeconds: number;
+  transcodePlaylistWaitMs: number;
+  transcodeSegmentWaitMs: number;
+  transcodePreset: string;
+  transcodeCrf: number;
+  transcodeAudioBitrate: string;
+  transcodeAudioLanguagePriority: string[];
 }
 
 const GIB = 1024 ** 3;
@@ -138,7 +148,16 @@ export function loadConfig(env = process.env): AppConfig {
     mkvpropeditPath: env.XCACHE_MKVPROPEDIT_PATH || 'mkvpropedit',
     statusFontFile: env.XCACHE_STATUS_FONT_FILE || undefined,
     audioDefaultEnabled: booleanEnv(env.XCACHE_AUDIO_DEFAULT_ENABLED, false),
-    audioLanguagePriority: csv(env.XCACHE_AUDIO_LANGUAGE_PRIORITY || '')
+    audioLanguagePriority: csv(env.XCACHE_AUDIO_LANGUAGE_PRIORITY || ''),
+    transcodeMode: transcodeMode(env.XCACHE_TRANSCODE_MODE || 'auto'),
+    transcodeCacheDir: env.XCACHE_TRANSCODE_CACHE_DIR || '/tmp/xcache-transcode',
+    transcodeSegmentSeconds: integerEnv(env.XCACHE_TRANSCODE_SEGMENT_SECONDS, 6, 2),
+    transcodePlaylistWaitMs: integerEnv(env.XCACHE_TRANSCODE_PLAYLIST_WAIT_MS, 12_000, 0),
+    transcodeSegmentWaitMs: integerEnv(env.XCACHE_TRANSCODE_SEGMENT_WAIT_MS, 12_000, 0),
+    transcodePreset: env.XCACHE_TRANSCODE_PRESET || 'veryfast',
+    transcodeCrf: integerEnv(env.XCACHE_TRANSCODE_CRF, 23, 0),
+    transcodeAudioBitrate: env.XCACHE_TRANSCODE_AUDIO_BITRATE || '192k',
+    transcodeAudioLanguagePriority: csv(env.XCACHE_TRANSCODE_AUDIO_LANGUAGE_PRIORITY || env.XCACHE_AUDIO_LANGUAGE_PRIORITY || 'pt-BR,pt,por,pob,br,en,eng')
   };
 }
 
@@ -193,6 +212,11 @@ function rdMode(value: string): RdMode {
 function statusVideoMode(value: string): StatusVideoMode {
   if (['live_hls', 'mp4_static'].includes(value)) return value as StatusVideoMode;
   return 'live_hls';
+}
+
+function transcodeMode(value: string): TranscodeMode {
+  if (['off', 'auto', 'always'].includes(value)) return value as TranscodeMode;
+  return 'auto';
 }
 
 function progressEnv(value: string | undefined, fallback: number): number {

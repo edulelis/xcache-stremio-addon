@@ -45,5 +45,14 @@ Defaults are tuned for Brazilian Portuguese stream workflows: PT-BR and dual-aud
 - `XCACHE_STALE_DOWNLOAD_DELETE_FILES`: deletes partial files when removing stale torrents. Defaults to `true`.
 - `XCACHE_AUDIO_DEFAULT_ENABLED`: enables default audio flag correction for completed local MKV files. Defaults to `false`.
 - `XCACHE_AUDIO_LANGUAGE_PRIORITY`: preferred audio language order used only when audio correction is enabled. Defaults to empty.
+- `XCACHE_TRANSCODE_MODE`: browser-safe HLS transcode mode for cached local files. `auto` transcodes only browser clients when HEVC/AC3/EAC3/DTS/TrueHD is detected, `always` ignores user-agent, and `off` disables it. Defaults to `auto`.
+- `XCACHE_TRANSCODE_CACHE_DIR`: temporary HLS output directory. Defaults to `/tmp/xcache-transcode`.
+- `XCACHE_TRANSCODE_SEGMENT_SECONDS`: HLS segment length. Defaults to `6`.
+- `XCACHE_TRANSCODE_PLAYLIST_WAIT_MS`: max wait for the first playlist file. Defaults to `12000`.
+- `XCACHE_TRANSCODE_SEGMENT_WAIT_MS`: max wait for an HLS segment file. Defaults to `12000`.
+- `XCACHE_TRANSCODE_PRESET`: ffmpeg `libx264` preset. Defaults to `veryfast`.
+- `XCACHE_TRANSCODE_CRF`: ffmpeg `libx264` CRF. Defaults to `23`.
+- `XCACHE_TRANSCODE_AUDIO_BITRATE`: AAC transcode bitrate. Defaults to `192k`.
+- `XCACHE_TRANSCODE_AUDIO_LANGUAGE_PRIORITY`: audio language order for HLS transcode. Defaults to `pt-BR,pt,por,pob,br,en,eng`.
 - `XCACHE_FFPROBE_PATH`: ffprobe binary path. Defaults to `ffprobe`.
 - `XCACHE_MKVPROPEDIT_PATH`: mkvpropedit binary path. Defaults to `mkvpropedit`.
